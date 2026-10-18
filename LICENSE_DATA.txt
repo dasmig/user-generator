@@ -1,0 +1,12 @@
+user-generator holds the data of the account only: the platforms, statuses,
+locales, languages, time zones and the words and patterns of human-style passwords in resources/. They were written for this
+library from general knowledge and rounded public usage statistics; nothing
+was copied from a dataset, so they are released under the MIT licence of the
+library.
+
+Everything else a user holds comes from the libraries it composes, and a
+user's data is theirs. Each library states its data sources and licences in
+its own LICENSE_DATA.txt and doc/data.md: country-generator, birth-generator,
+name-generator, nickname-generator, email-generator, phone-generator (Apache-2.0
+notice for libphonenumber) and address-generator (OpenStreetMap, ODbL; GeoNames,
+CC BY 4.0). doc/data.md here lists them by part of the user.

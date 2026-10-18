@@ -1,0 +1,11 @@
+# Device and platform shares of user accounts. Authored estimates, rounded from public usage statistics; replace with your own through a layer.
+key	label	device	os	weight
+android-phone	Android phone	phone	Android	44.0
+ios-phone	iPhone	phone	iOS	27.0
+windows-desktop	Windows PC	desktop	Windows	15.0
+macos-desktop	Mac	desktop	macOS	5.0
+ipad	iPad	tablet	iPadOS	2.5
+android-tablet	Android tablet	tablet	Android	1.5
+linux-desktop	Linux PC	desktop	Linux	1.5
+chromeos-desktop	Chromebook	desktop	ChromeOS	0.5
+other	Other device	other	other	0.3

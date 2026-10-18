@@ -1,0 +1,6 @@
+# Account status shares. login: recent (last login within the past 90 days), stale (over a year ago), never (no login recorded).
+key	label	login	weight
+active	Active	recent	88.0
+inactive	Inactive	stale	7.0
+unverified	Unverified	never	3.0
+suspended	Suspended	recent	2.0

@@ -1,0 +1,23 @@
+name: Check out the composed libraries
+description: >
+  Checks out the libraries user-generator composes, at the release tags it
+  was tested with, under libs/. Move the tags here, in one place, when adopting
+  a newer release; the known-answer tests change with them.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/address-generator, ref: v2.0.1, path: libs/address-generator}
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/birth-generator, ref: v3.1.2, path: libs/birth-generator}
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/country-generator, ref: v3.1.2, path: libs/country-generator}
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/email-generator, ref: v2.1.1, path: libs/email-generator}
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/name-generator, ref: v4.2.2, path: libs/name-generator}
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/nickname-generator, ref: v5.2.0, path: libs/nickname-generator}
+    - uses: actions/checkout@v4
+      with: {repository: dasmig/phone-generator, ref: v2.1.1, path: libs/phone-generator}
