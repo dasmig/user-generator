@@ -2,6 +2,8 @@
 
 > **Requires C++23** (e.g., `-std=c++23` for GCC/Clang, `/std:c++latest` for MSVC).
 
+[![user-generator for C++](https://raw.githubusercontent.com/dasmig/user-generator/main/doc/user-generator.png)](https://github.com/dasmig/user-generator/releases)
+
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/dasmig/user-generator/main/LICENSE.MIT)
 [![CI](https://github.com/dasmig/user-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/dasmig/user-generator/actions/workflows/ci.yml)
 [![GitHub Releases](https://img.shields.io/github/release/dasmig/user-generator.svg)](https://github.com/dasmig/user-generator/releases)
@@ -27,25 +29,25 @@ Angelica Cristina (angelica.c_1997) <angelica.c@gmail.com>, Brazil
 
 - **Ask for What You Need**. A `user_request` can fix the country, the sex, an age range, the reference date, the password policy, the youngest sign-up age, the service start and the status. What is left out is drawn.
 
-- **Batch Generation**. Generate thousands of users from one seed, on several threads with the same output for any thread count, unique by a key such as the email, and stream them as JSON Lines or CSV (see the usage guide).
+- **Your Data**. The platform, status, locale and time-zone tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
 
 - **Deterministic Seeding**. `get_user(request, seed)` is a pure function of the request, the seed and the data, and `user::seed()` replays a previous user. Each part draws from its own stream split from the seed, so forcing one choice, such as the status, does not shift the others.
 
-- **Identical Everywhere**. A seed gives the same result on every compiler, standard library and CPU (GCC, Clang, MSVC, Emscripten; x86-64 and ARM64), checked by known-answer tests.
+- **Batch Generation**. Generate thousands of users from one seed, on several threads with the same output for any thread count, unique by a key such as the email, and stream them as JSON Lines or CSV (see the usage guide).
 
-- **Your Data**. The platform, status, locale and time-zone tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
+- **Identical Everywhere**. A seed gives the same result on every compiler, standard library and CPU (GCC, Clang, MSVC, Emscripten; x86-64 and ARM64), checked by known-answer tests.
 
 - **JSON and Replay**. `to_json()` writes each library's result as that library writes it; `signature()` records the seed and a hash of the data of all seven libraries and the account tables.
 
 ## Integration
 
-[`usergen.hpp`](https://github.com/dasmig/user-generator/blob/main/dasmig/usergen.hpp) is the library [released here](https://github.com/dasmig/user-generator/releases). It composes these libraries, which must be on the include path (with `dasmig-core` in each): [address](https://github.com/dasmig/address-generator), [birth](https://github.com/dasmig/birth-generator), [country](https://github.com/dasmig/country-generator), [email](https://github.com/dasmig/email-generator), [name](https://github.com/dasmig/name-generator), [nickname](https://github.com/dasmig/nickname-generator) and [phone](https://github.com/dasmig/phone-generator). The release notes list the versions it was tested with. Add
+[`usergen.hpp`](https://github.com/dasmig/user-generator/blob/main/dasmig/usergen.hpp) is the library [released here](https://github.com/dasmig/user-generator/releases). Keep [`core.hpp`](https://github.com/dasmig/user-generator/blob/main/dasmig/core.hpp) and the [`core/`](https://github.com/dasmig/user-generator/tree/main/dasmig/core) directory ([dasmig-core](https://github.com/dasmig/dasmig-core)) in the same directory. Add
 
 ```cpp
 #include <dasmig/usergen.hpp>
 ```
 
-to the files you want to use it in, and supply the [`resources`](https://github.com/dasmig/user-generator/tree/main/resources) folder (or define `DASMIG_USER_EMBED`). Each library finds its data as it does alone (a `resources` folder, or its compiled-in `lite` tier: define `DASMIG_ADDRESS_EMBED`, `DASMIG_BIRTH_EMBED`, `DASMIG_COUNTRY_EMBED`, `DASMIG_EMAIL_EMBED`, `DASMIG_NAME_EMBED`, `DASMIG_NICKNAME_EMBED` and `DASMIG_PHONE_EMBED`).
+to the files you want to use it in, and supply the [`resources`](https://github.com/dasmig/user-generator/tree/main/resources) folder (or define `DASMIG_USER_EMBED`).
 
 user-generator composes these libraries directly and does not use [persona-generator](https://github.com/dasmig/persona-generator): a user has no body, traits, interests, job or city. The two share only the identity core (country, birth, name, nickname).
 
@@ -81,8 +83,6 @@ See the [usage guide](doc/usage.md) for everything else.
 
 ## Building
 
-The libraries it composes are sibling checkouts (`LIBS=..`, the default), with their `lite` data compiled in.
-
 ```bash
 make            # example
 make test       # tests
@@ -92,7 +92,6 @@ make coverage   # code coverage
 make lint       # clang-tidy
 make docs       # API docs
 make embed      # regenerate dasmig/usergen_data.hpp from resources/lite
-make test LIBS=path/to/the/libraries   # when they are elsewhere
 ```
 
 ## Compiler Support
@@ -107,8 +106,7 @@ Tested with:
 
 | Dependency | Version | Bundled | Purpose |
 |-----------|---------|---------|---------|
-| [dasmig-core](https://github.com/dasmig/dasmig-core) | 1.2 | Yes (`core.hpp`, `core/`) | Platform-independent random engine and distributions, data layers, JSON |
-| the seven libraries above | see [CI](https://github.com/dasmig/user-generator/blob/main/.github/actions/checkout-libs/action.yml) | No | The user's parts |
+| [dasmig-core](https://github.com/dasmig/dasmig-core) | 1.0 | Yes (`core.hpp`, `core/`) | Platform-independent random engine and distributions, data layers, JSON |
 | [Catch2](https://github.com/catchorg/Catch2) | 3.x | Yes (amalgamated) | Unit testing |
 
 ## Related Libraries
@@ -124,7 +122,7 @@ Tested with:
 | [entity-generator](https://github.com/dasmig/entity-generator) | ECS-based entity generation |
 | [interest-generator](https://github.com/dasmig/interest-generator) | Religion, hobbies and favourite media by country, age and sex |
 | [name-generator](https://github.com/dasmig/name-generator) | Culturally appropriate full names |
-| [nickname-generator](https://github.com/dasmig/nickname-generator) | Gamer-style nicknames and usernames |
+| [nickname-generator](https://github.com/dasmig/nickname-generator) | Gamer-style nicknames |
 | [occupation-generator](https://github.com/dasmig/occupation-generator) | Employment status, education and occupation by country, age and sex |
 | [persona-generator](https://github.com/dasmig/persona-generator) | Complete characters composed from the other generators |
 | [phone-generator](https://github.com/dasmig/phone-generator) | Phone numbers valid in each country's numbering plan |
