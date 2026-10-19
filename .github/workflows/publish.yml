@@ -1,0 +1,64 @@
+name: Publish package
+
+# Publishes @dasmig/user to npm when a package-vX.Y.Z tag is pushed. No
+# token: npm trusted publishing exchanges this run's OIDC identity for a
+# short-lived credential, and records provenance. The trusted publisher is set
+# on npmjs.com (package Settings): repository dasmig/user-generator,
+# workflow filename publish.yml, no environment.
+on:
+  push:
+    tags: ['package-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: npm publish
+    runs-on: ubuntu-24.04
+
+    steps:
+      # The full history, so versions.mjs can name the user-generator tag.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag against the package version
+        run: |
+          version=$(node -p "require('./package/package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "package-v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package version ${version}"
+            exit 1
+          fi
+
+      - uses: ./.github/actions/checkout-libs
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build the package
+        run: python3 scripts/build_package.py --libs libs --out build/package
+
+      - name: Test the package in Node
+        run: node package/test.mjs build/package
+
+      - name: Test the package in Chrome
+        run: node package/browser-test.mjs build/package
+
+      - name: Pack the package
+        run: npm pack ./build/package --pack-destination .
+
+      # Trusted publishing needs npm 11.5.1 or later and Node 22.14 or later.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish with provenance
+        run: npm publish dasmig-user-*.tgz --access public --provenance

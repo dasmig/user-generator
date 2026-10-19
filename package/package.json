@@ -1,0 +1,58 @@
+{
+  "name": "@dasmig/user",
+  "version": "1.0.0",
+  "description": "Fictional user records (name, birth, address, phone, email, username, password, account) from one seeded call, in WebAssembly.",
+  "type": "module",
+  "main": "./index.mjs",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "node": "./node.mjs",
+      "default": "./index.mjs"
+    },
+    "./user.wasm": "./user.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "node.mjs",
+    "generator.mjs",
+    "pool-worker-core.mjs",
+    "pool-worker-node.mjs",
+    "pool-worker.mjs",
+    "pool.mjs",
+    "batch.mjs",
+    "versions.mjs",
+    "index.d.ts",
+    "user.mjs",
+    "user.wasm",
+    "README.md",
+    "LICENSE",
+    "DATA_LICENSES.txt"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "procedural-generation",
+    "test-data",
+    "fake-data",
+    "user",
+    "email",
+    "webassembly",
+    "seeded"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dasmig/user-generator.git",
+    "directory": "package"
+  },
+  "homepage": "https://github.com/dasmig/user-generator/tree/main/package#readme",
+  "bugs": {
+    "url": "https://github.com/dasmig/user-generator/issues"
+  },
+  "author": "Diego Dasso Migotto",
+  "license": "MIT"
+}
