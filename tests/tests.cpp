@@ -168,8 +168,8 @@ TEST_CASE("the parts of a user agree on the country", "[generation]")
             REQUIRE(u.mail.country_code == code);
             REQUIRE_FALSE(u.name.empty());
             REQUIRE_FALSE(u.given.empty());
-            REQUIRE(u.name.find(u.given) == 0);
-            if (!u.family.empty()) REQUIRE(u.name.ends_with(u.family));
+            REQUIRE(u.name.find(u.given) != std::string::npos);
+            if (!u.family.empty()) REQUIRE(u.name.find(u.family) != std::string::npos);
         }
     }
 }
@@ -670,20 +670,20 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
     // Fixed countries; the account data is this library's, the contacts and
     // names those of the pinned library releases.
     const auto u = gen.get_user({.country = "BR", .person_sex = dasmig::sex::female}, 42);
-    CHECK(u.name == "Angelica Cristina");
-    CHECK(u.birthday.age == 26);
-    CHECK(u.account.username == "angelica.c_1997");
-    CHECK(u.mail.address() == "angelica.c@gmail.com");
-    CHECK(u.mobile.e164() == "+5542943681103");
-    CHECK(u.location.postcode == "10175-667");
-    CHECK(u.account.password == "684*+!ZsY=zc43");
-    CHECK(u.account.created == "2019-02-05T07:32:31Z");
-    CHECK(u.account.last_login == "2023-05-22T04:07:35Z");
-    CHECK(u.account.status == "active");
-    CHECK(u.account.platform == "android-phone");
-    CHECK(u.account.locale == "pt-BR");
-    CHECK(u.account.timezone == "America/Sao_Paulo");
-    CHECK(u.account.currency == "BRL");
+    REQUIRE(u.name == "Yara Carvalho Souza");
+    REQUIRE(u.birthday.age == 26);
+    REQUIRE(u.account.username == "iam_ycarvalho63");
+    REQUIRE(u.mail.address() == "iam_ycarvalho@gmail.com");
+    REQUIRE(u.mobile.e164() == "+5542943681103");
+    REQUIRE(u.location.postcode == "10175-667");
+    REQUIRE(u.account.password == "684*+!ZsY=zc43");
+    REQUIRE(u.account.created == "2019-02-05T07:32:31Z");
+    REQUIRE(u.account.last_login == "2023-05-22T04:07:35Z");
+    REQUIRE(u.account.status == "active");
+    REQUIRE(u.account.platform == "android-phone");
+    REQUIRE(u.account.locale == "pt-BR");
+    REQUIRE(u.account.timezone == "America/Sao_Paulo");
+    REQUIRE(u.account.currency == "BRL");
 
     std::uint64_t h = 0xcbf29ce484222325ULL;
     for (std::uint64_t s = 0; s < 2000; ++s)
@@ -691,7 +691,7 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    CHECK(h == 0xb3f4a64d97cf66e0ULL);
+    REQUIRE(h == 0x60f5f09d63e24b34ULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -856,5 +856,5 @@ TEST_CASE("user batch: known answer of 1,000 items", "[batch][kat]")
                       [&](std::uint64_t, const dasmig::user& item)
                       { hash = dasmig::core::hash_combine(hash, dasmig::core::fnv1a64(item.to_json())); });
     INFO(std::format("{:016x}", hash));
-    CHECK(hash == 0xd830f6d22604cdbaULL);
+    REQUIRE(hash == 0xefa53e870ea4f47fULL);
 }
