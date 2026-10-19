@@ -858,3 +858,16 @@ TEST_CASE("user batch: known answer of 1,000 items", "[batch][kat]")
     INFO(std::format("{:016x}", hash));
     REQUIRE(hash == 0xefa53e870ea4f47fULL);
 }
+
+TEST_CASE("tmp readme probe", "[tmp]")
+{
+    const auto gen = make_loaded_generator();
+    dasmig::user_request request;
+    request.country = "BR";
+    request.person_sex = dasmig::sex::female;
+    request.ages = dasmig::age_range{.min = 25, .max = 35};
+    request.safe = true;
+    const auto v = gen.get_user(request, 42);
+    CHECK(v.mail.address() == "probe");
+    CHECK(v.mobile.e164() == "probe");
+}
