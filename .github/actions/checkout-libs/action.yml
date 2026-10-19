@@ -16,7 +16,7 @@ runs:
     - uses: actions/checkout@v4
       with: {repository: dasmig/email-generator, ref: v2.1.1, path: libs/email-generator}
     - uses: actions/checkout@v4
-      with: {repository: dasmig/name-generator, ref: v4.2.2, path: libs/name-generator}
+      with: {repository: dasmig/name-generator, ref: v4.3.0, path: libs/name-generator}
     - uses: actions/checkout@v4
       with: {repository: dasmig/nickname-generator, ref: v5.2.0, path: libs/nickname-generator}
     - uses: actions/checkout@v4

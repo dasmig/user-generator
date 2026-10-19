@@ -1093,14 +1093,12 @@ class usg
         const auto name_culture = ng::to_culture(core::from_utf8(lower_(cca2)));
         if (name_culture == culture::any)
             throw std::invalid_argument("user-generator: name-generator has no names for country " + cca2);
-        auto n = _from.name->get_name(
+        const auto n = _from.name->get_full_name(
             {.gender = u.birthday.bio_sex == sex::female ? gender::f : gender::m, .culture = name_culture},
             call.split("name")());
-        n.append_surname();
-        const auto& parts = n.parts();
         u.name = core::to_utf8(static_cast<std::wstring>(n));
-        u.given = core::to_utf8(parts.front());
-        if (parts.size() > 1) u.family = core::to_utf8(parts.back());
+        u.given = core::to_utf8(n.given());
+        u.family = core::to_utf8(n.family());
 
         // Online identity: username, email, phone, address.
         const auto nick = _from.nickname->get_nickname(
