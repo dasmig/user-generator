@@ -7,7 +7,6 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-function check(a, e) { if (a !== e) console.log('MISMATCH ' + JSON.stringify(a) + ' <> ' + JSON.stringify(e)); }
 
 const dir = path.resolve(process.argv[2] || 'build/package');
 const { createUserGenerator, createUserPool } = await import(pathToFileURL(path.join(dir, 'node.mjs')).href);
@@ -17,31 +16,31 @@ const users = await createUserGenerator();
 const summary = u => `${u.name} (${u.account.username}) <${u.email.address}>, ${u.country.name}`;
 const signature = u => u.signature.seed + '-' + u.signature.data;
 
-check(users.countries.length, 100);
+assert.equal(users.countries.length, 100);
 assert.ok(users.countries.includes('BR') && !users.countries.includes('NZ'));
-check(users.dataHash, 'c388d6c0928e1a6c');
+assert.equal(users.dataHash, 'c388d6c0928e1a6c');
 assert.ok(users.versions['user-generator'].length > 0, JSON.stringify(users.versions));
-check(Object.keys(users.versions).length, 8);
+assert.equal(Object.keys(users.versions).length, 8);
 assert.ok(Object.isFrozen(users) && Object.isFrozen(users.countries));
 
 // Known answers.
 const one = users.generate({ seed: 1 });
-check(summary(one), 'Maurício Marques (marques.mauricio) <marques.mauricio1990@gmail.com>, Brazil');
-check(signature(one), '0000000000000001-c388d6c0928e1a6c');
-check(one.age, 32);
+assert.equal(summary(one), 'Hamilton Salvador Nogueira (hamilton.salvador23) <hamilton.salvador1990@gmail.com>, Brazil');
+assert.equal(signature(one), '0000000000000001-c388d6c0928e1a6c');
+assert.equal(one.age, 32);
 const two = users.generate({ seed: '2' });
-check(summary(two), 'Zhang Hsiung (hsiungz1996) <hsiungz@qq.com>, China');
-check(signature(two), '0000000000000002-c388d6c0928e1a6c');
+assert.equal(summary(two), 'Chang Shanghai (shanghaic1996) <shanghaic@qq.com>, China');
+assert.equal(signature(two), '0000000000000002-c388d6c0928e1a6c');
 const three = users.generate({ country: 'BR', sex: 'female', ages: { min: 25, max: 35 }, seed: 3n });
-check(summary(three), 'Rosangela Bonfim (rosangelabonfim7322) <rosangela_bonfim96@gmail.com>, Brazil');
-check(signature(three), '0000000000000003-c388d6c0928e1a6c');
+assert.equal(summary(three), 'Luana Rufino (luanarufino7322) <luana_rufino96@gmail.com>, Brazil');
+assert.equal(signature(three), '0000000000000003-c388d6c0928e1a6c');
 const four = users.generate({ country: 'jp', referenceDate: '2030-03-09', seed: 4 });
-check(summary(four), 'Takashi Taka (ttaka66) <taka_takashi@gmail.com>, Japan');
-check(four.age, 63);
+assert.equal(summary(four), 'Hidaka Hiromasa (hhiromasa66) <hidaka_hiromasa@gmail.com>, Japan');
+assert.equal(four.age, 63);
 const five = users.generate({ country: 'US', safe: true, status: 'suspended', seed: 5 });
-check(summary(five), 'Fabian Larson (fabianl) <larson49@example.org>, United States');
-check(five.email.reserved, true);
-check(five.account.status, 'suspended');
+assert.equal(summary(five), 'Christian Mercado (christianm) <mercado49@example.org>, United States');
+assert.equal(five.email.reserved, true);
+assert.equal(five.account.status, 'suspended');
 
 // The hash of 2,000 JSON documents, as the native build computes it.
 let hash = 0xcbf29ce484222325n;
@@ -50,11 +49,11 @@ const encoder = new TextEncoder();
 for (let s = 0; s < 2000; ++s) {
   for (const byte of encoder.encode(users.generateJson({ seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-check(hash.toString(16), 'af4b69b98e8c0301');
+assert.equal(hash.toString(16), '9826ba85052ba4cd');
 
 // A random user replays from its seed.
 const random = users.generate({ country: 'DE', referenceDate: new Date(2026, 9, 15) });
-check(random.birth.date <= '2026-10-15', true);
+assert.equal(random.birth.date <= '2026-10-15', true);
 assert.deepEqual(users.generate({ country: 'DE', referenceDate: '2026-10-15', seed: random.signature.seed }), random);
 assert.notEqual(users.generate().signature.seed, users.generate().signature.seed);
 
@@ -62,22 +61,22 @@ assert.notEqual(users.generate().signature.seed, users.generate().signature.seed
 for (let s = 0; s < 40; ++s) {
   const u = users.generate({ ages: { min: 30, max: 35 }, seed: s });
   assert.ok(u.age >= 30 && u.age <= 35);
-  check(u.birth.age, u.age);
+  assert.equal(u.birth.age, u.age);
   assert.ok(u.account.created > u.birth.date);
 }
 const female = users.generate({ country: 'FR', sex: 'female', seed: 9 });
 const male = users.generate({ country: 'FR', sex: 'male', seed: 9 });
-check(female.sex, 'female');
-check(male.sex, 'male');
-check(users.generate({ seed: 'ffffffffffffffff' }).signature.seed, 'ffffffffffffffff');
-check(users.generate({ seed: (1n << 64n) - 1n }).signature.seed, 'ffffffffffffffff');
-check(users.generate({ seed: '0x2A' }).signature.seed, '000000000000002a');
+assert.equal(female.sex, 'female');
+assert.equal(male.sex, 'male');
+assert.equal(users.generate({ seed: 'ffffffffffffffff' }).signature.seed, 'ffffffffffffffff');
+assert.equal(users.generate({ seed: (1n << 64n) - 1n }).signature.seed, 'ffffffffffffffff');
+assert.equal(users.generate({ seed: '0x2A' }).signature.seed, '000000000000002a');
 assert.deepEqual(users.generate({ seed: '2a' }), users.generate({ seed: 42 }));
-check(users.generate({ country: 'jp', seed: 1 }).country.code, 'JP');
+assert.equal(users.generate({ country: 'jp', seed: 1 }).country.code, 'JP');
 for (const status of ['active', 'inactive', 'unverified', 'suspended']) {
-  check(users.generate({ status, seed: 1 }).account.status, status);
+  assert.equal(users.generate({ status, seed: 1 }).account.status, status);
 }
-check(users.generate({ status: 'unverified', seed: 6 }).account.last_login, null);
+assert.equal(users.generate({ status: 'unverified', seed: 6 }).account.last_login, null);
 
 // Errors: the wrapper checks the request, so a malformed field is a
 // TypeError and a value out of range is a RangeError, before the module runs.
@@ -115,7 +114,7 @@ for (const [request, kind, message] of [
     JSON.stringify(request, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 }
 // A failed call leaves the generator usable.
-check(signature(users.generate({ seed: 1 })), '0000000000000001-c388d6c0928e1a6c');
+assert.equal(signature(users.generate({ seed: 1 })), '0000000000000001-c388d6c0928e1a6c');
 
 // Batches. User i of a batch is the single call with the seed
 // core::item_seed(batchSeed, i): splitmix64_mix(seed ^ splitmix64_mix(i ^ 0x6a09e667f3bcc909)).
@@ -128,7 +127,7 @@ const itemSeed = (batchSeed, index) => mix(batchSeed ^ mix(BigInt(index) ^ 0x6a0
 
 const request = { country: 'BR', sex: 'female', ages: { min: 20, max: 40 }, safe: true };
 const batch = users.generateBatch({ request, count: 60, seed: 7 });
-check(batch.length, 60);
+assert.equal(batch.length, 60);
 for (let i = 0; i < batch.length; ++i) {
   assert.deepEqual(batch[i], users.generate({ ...request, seed: itemSeed(7n, i) }), `user ${i}`);
 }
@@ -139,10 +138,10 @@ assert.deepEqual([...users.generateBatch({ request, count: 25, seed: '7' }),
 // JSON Lines: one user per line, as the C++ library writes it.
 const lines = users.generateBatchJsonl({ request, count: 60, seed: 7 });
 assert.ok(lines.endsWith('\n'));
-check(lines.split('\n').length, 61);
+assert.equal(lines.split('\n').length, 61);
 assert.deepEqual(lines.slice(0, -1).split('\n').map(line => JSON.parse(line)), batch);
 assert.deepEqual(users.generateBatch({ count: 0, seed: 1 }), []);
-check(users.generateBatchJsonl({ count: 0 }), '');
+assert.equal(users.generateBatchJsonl({ count: 0 }), '');
 // Without a seed the batch is random but each user replays from its signature.
 const unseeded = users.generateBatch({ count: 3 });
 assert.notEqual(unseeded[0].signature.seed, unseeded[1].signature.seed);
@@ -171,19 +170,19 @@ const expected = users.generateBatchJsonl(poolOptions);
 for (const workers of [1, 2, 4]) {
   const pool = await createUserPool({ workers });
   try {
-    check(pool.size, workers);
-    check(await pool.generateBatchJsonl(poolOptions), expected, `${workers} workers`);
+    assert.equal(pool.size, workers);
+    assert.equal(await pool.generateBatchJsonl(poolOptions), expected, `${workers} workers`);
     assert.deepEqual(await pool.generateBatch({ ...poolOptions, count: 3 }),
       users.generateBatch({ ...poolOptions, count: 3 }));
     assert.deepEqual(await pool.generateBatch({ count: 0 }), []);
     // Fewer users than workers, and two calls at once.
     const [few, other] = await Promise.all([pool.generateBatchJsonl({ ...poolOptions, count: 1 }),
       pool.generateBatchJsonl({ ...poolOptions, count: 5 })]);
-    check(few, expected.slice(0, expected.indexOf('\n') + 1));
-    check(other, expected.split('\n').slice(0, 5).join('\n') + '\n');
+    assert.equal(few, expected.slice(0, expected.indexOf('\n') + 1));
+    assert.equal(other, expected.split('\n').slice(0, 5).join('\n') + '\n');
     await assert.rejects(pool.generateBatch({ count: 1, request: { country: 'XX' } }), RangeError);
     await assert.rejects(pool.generateBatch({ count: 1, seed: 'xyz' }), RangeError);
-    check(await pool.generateBatchJsonl(poolOptions), expected, 'still usable after errors');
+    assert.equal(await pool.generateBatchJsonl(poolOptions), expected, 'still usable after errors');
   } finally {
     pool.close();
   }

@@ -16,7 +16,7 @@
 Synthetic user records for apps, test databases and demos, composed from the other dasmig generators: one call draws a country, a birth and a name, then a username, an email, a phone number, a postal address and an account (password, sign-up and last-login times, status, platform, locale, time zone, currency), and returns them as typed results and one JSON document.
 
 ```
-Angelica Cristina (angelica.c_1997) <angelica.c@gmail.com>, Brazil
+Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 ```
 
 ## Features
