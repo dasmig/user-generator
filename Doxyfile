@@ -2,7 +2,7 @@
 # Run: doxygen Doxyfile
 
 PROJECT_NAME           = "User Generator"
-PROJECT_NUMBER         = 0.1.0
+PROJECT_NUMBER         = 2.0.0
 PROJECT_BRIEF          = "Synthetic user records for apps and test data, composed from the other dasmig generators for C++23"
 PROJECT_LOGO           =
 
