@@ -74,7 +74,7 @@ request.ages = dasmig::age_range{.min = 25, .max = 35};
 request.safe = true;                       // contacts that reach no one
 auto v = gen.get_user(request, 42);          // a seed, so the values below repeat
 
-v.mail.address();      // angelica.c@example.com
+v.mail.address();      // iam_ycarvalho@example.com
 v.mobile.e164();       // +5589445812689, from the range set aside for fiction
 v.account.password;    // to the password policy: random, or human (`Dragon123`) with style = password_style::human
 v.account.last_login;  // an ISO 8601 time, empty if the account never logged in
