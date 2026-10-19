@@ -122,7 +122,7 @@ A call draws, each from a stream of its own split from the call seed by name:
 
 1. **`country`**: the request's, or one drawn by population until every part has data for it. Drawing skips a country whose name or birth data cannot give the sex asked for; asking for one is an error.
 2. **`birth`** (birth-generator): the country, the sex and the age range, at the reference date.
-3. **`name`** (name-generator): the country's culture and the sex; the given name is the first part, the family name the last.
+3. **`name`** (name-generator): the country's culture and the sex, composed by the culture's naming convention (`get_full_name`): family name first for Chinese, Japanese and Korean, two surnames for Spanish and Portuguese, a patronymic for Russian and Icelandic. `given` and `family` are the name's given name and family name by role.
 4. **`username`** (nickname-generator, `username` style): from the full name and the birth year.
 5. **`email`** (email-generator): the country, the given and family names, the birth year and the username without its trailing digits and separators (so the email does not double the digits).
 6. **`phone`** (phone-generator): the country; `safe` gives a reserved number where there is a range.

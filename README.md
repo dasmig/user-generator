@@ -16,7 +16,7 @@
 Synthetic user records for apps, test databases and demos, composed from the other dasmig generators: one call draws a country, a birth and a name, then a username, an email, a phone number, a postal address and an account (password, sign-up and last-login times, status, platform, locale, time zone, currency), and returns them as typed results and one JSON document.
 
 ```
-Angelica Cristina (angelica.c_1997) <angelica.c@gmail.com>, Brazil
+Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 ```
 
 ## Features
@@ -74,7 +74,7 @@ request.ages = dasmig::age_range{.min = 25, .max = 35};
 request.safe = true;                       // contacts that reach no one
 auto v = gen.get_user(request, 42);          // a seed, so the values below repeat
 
-v.mail.address();      // angelica.c@example.com
+v.mail.address();      // iam_ycarvalho@example.com
 v.mobile.e164();       // +5589445812689, from the range set aside for fiction
 v.account.password;    // to the password policy: random, or human (`Dragon123`) with style = password_style::human
 v.account.last_login;  // an ISO 8601 time, empty if the account never logged in

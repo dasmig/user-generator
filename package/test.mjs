@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+
 const dir = path.resolve(process.argv[2] || 'build/package');
 const { createUserGenerator, createUserPool } = await import(pathToFileURL(path.join(dir, 'node.mjs')).href);
 const users = await createUserGenerator();
@@ -24,20 +25,20 @@ assert.ok(Object.isFrozen(users) && Object.isFrozen(users.countries));
 
 // Known answers.
 const one = users.generate({ seed: 1 });
-assert.equal(summary(one), 'Maurício Marques (marques.mauricio) <marques.mauricio1990@gmail.com>, Brazil');
+assert.equal(summary(one), 'Hamilton Salvador Nogueira (hamilton.salvador23) <hamilton.salvador1990@gmail.com>, Brazil');
 assert.equal(signature(one), '0000000000000001-c388d6c0928e1a6c');
 assert.equal(one.age, 32);
 const two = users.generate({ seed: '2' });
-assert.equal(summary(two), 'Zhang Hsiung (hsiungz1996) <hsiungz@qq.com>, China');
+assert.equal(summary(two), 'Chang Shanghai (shanghaic1996) <shanghaic@qq.com>, China');
 assert.equal(signature(two), '0000000000000002-c388d6c0928e1a6c');
 const three = users.generate({ country: 'BR', sex: 'female', ages: { min: 25, max: 35 }, seed: 3n });
-assert.equal(summary(three), 'Rosangela Bonfim (rosangelabonfim7322) <rosangela_bonfim96@gmail.com>, Brazil');
+assert.equal(summary(three), 'Luana Rufino (luanarufino7322) <luana_rufino96@gmail.com>, Brazil');
 assert.equal(signature(three), '0000000000000003-c388d6c0928e1a6c');
 const four = users.generate({ country: 'jp', referenceDate: '2030-03-09', seed: 4 });
-assert.equal(summary(four), 'Takashi Taka (ttaka66) <taka_takashi@gmail.com>, Japan');
+assert.equal(summary(four), 'Hidaka Hiromasa (hhiromasa66) <hidaka_hiromasa@gmail.com>, Japan');
 assert.equal(four.age, 63);
 const five = users.generate({ country: 'US', safe: true, status: 'suspended', seed: 5 });
-assert.equal(summary(five), 'Fabian Larson (fabianl) <larson49@example.org>, United States');
+assert.equal(summary(five), 'Christian Mercado (christianm) <mercado49@example.org>, United States');
 assert.equal(five.email.reserved, true);
 assert.equal(five.account.status, 'suspended');
 
@@ -48,7 +49,7 @@ const encoder = new TextEncoder();
 for (let s = 0; s < 2000; ++s) {
   for (const byte of encoder.encode(users.generateJson({ seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-assert.equal(hash.toString(16), 'af4b69b98e8c0301');
+assert.equal(hash.toString(16), '9826ba85052ba4cd');
 
 // A random user replays from its seed.
 const random = users.generate({ country: 'DE', referenceDate: new Date(2026, 9, 15) });

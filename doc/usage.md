@@ -34,7 +34,7 @@ int main()
 {
     auto& gen = dasmig::usg::instance();
     std::cout << gen.get_user(dasmig::user_request{}) << '\n';
-    // Angelica Cristina (angelica.c_1997) <angelica.c@gmail.com>, Brazil
+    // Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 }
 ```
 
@@ -110,9 +110,9 @@ auto u = gen.get_user(request);
 ## The User
 
 ```cpp
-u.name;         // "Angelica Cristina" (UTF-8)
-u.given;        // "Angelica"
-u.family;       // "Cristina"; empty for a name of one part
+u.name;         // "Yara Carvalho Souza" (UTF-8)
+u.given;        // "Yara"
+u.family;       // "Carvalho Souza" (both surnames of a double surname); empty when the name has none
 u.person_sex(); // dasmig::sex::female
 u.age();        // 26, completed years at the reference date
 u.country_code; // "BR"
@@ -128,7 +128,7 @@ The fields of `u.account`:
 
 | Field | Value |
 |-------|-------|
-| `username` | nickname-generator's `username` style, from the name and the birth year (`angelica.c_1997`) |
+| `username` | nickname-generator's `username` style, from the name and the birth year (`iam_ycarvalho63`) |
 | `password` | to the request's policy, plain text |
 | `created` | sign-up time, ISO 8601 UTC (`2019-02-05T07:32:31Z`) |
 | `last_login` | ISO 8601 UTC; empty if the account never logged in |
@@ -246,10 +246,10 @@ u.signature().data; // gen.data_hash() when it was generated: the account tables
 `to_json()` gives the result as JSON. Each library's result is written as that library writes it, next to the user's own fields:
 
 ```json
-{"name":"Angelica Cristina","given":"Angelica","family":"Cristina","sex":"female","age":26,
+{"name":"Yara Carvalho Souza","given":"Yara","family":"Carvalho Souza","sex":"female","age":26,
  "country":{"code":"BR","name":"Brazil"},
  "birth":{...},"address":{...},"phone":{...},"email":{...},
- "account":{"username":"angelica.c_1997","password":"684*+!ZsY=zc43",
+ "account":{"username":"iam_ycarvalho63","password":"684*+!ZsY=zc43",
             "created":"2019-02-05T07:32:31Z","last_login":"2023-05-22T04:07:35Z",
             "status":"active","platform":"android-phone","device":"phone","os":"Android",
             "locale":"pt-BR","timezone":"America/Sao_Paulo","currency":"BRL"},
