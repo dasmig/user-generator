@@ -22,7 +22,7 @@ BENCH_FLAGS := -O2 -DNDEBUG
 COV_FLAGS := -fprofile-instr-generate -fcoverage-mapping
 COV_DIR   := coverage
 
-.PHONY: all clean lint test bench bench-gate test-embed coverage docs embed
+.PHONY: all clean lint test bench bench-gate test-embed coverage docs embed package
 
 all: $(EXAMPLE_BIN)
 
@@ -76,6 +76,11 @@ docs:
 
 lint:
 	clang-tidy --header-filter='usergen[.]hpp' $(EXAMPLE_SRC) -- $(CXXFLAGS)
+
+# The npm package (package/), built with Emscripten into $(BUILD)/package; see
+# scripts/build_package.py. Test it with node package/test.mjs $(BUILD)/package.
+package:
+	$(PYTHON) scripts/build_package.py --libs $(LIBS) --out $(BUILD)/package
 
 clean:
 	rm -rf $(BUILD) $(COV_DIR) doc/api

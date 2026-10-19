@@ -172,6 +172,57 @@ jobs:
             -o build/test_runner.js tests/tests.cpp tests/catch_amalgamated.cpp
           node build/test_runner.js
 
+  # The npm package @dasmig/user (package/): the C API in wasm/ compiled to
+  # WebAssembly, then the package tested in Node and in headless Chrome (a page
+  # and a Web Worker), benchmarked (a report) and packed. The tarball is
+  # uploaded as user-npm-package; publish that one.
+  package:
+    name: npm package
+    runs-on: ubuntu-24.04
+
+    steps:
+      # The full history, so versions.mjs can name the user-generator tag.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/checkout-libs
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.74
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build the package
+        run: python3 scripts/build_package.py --libs libs --out build/package
+
+      - name: Test the package in Node
+        run: node package/test.mjs build/package
+
+      - name: Test the package in Chrome
+        run: node package/browser-test.mjs build/package
+
+      - name: Benchmark the package
+        run: node package/bench.mjs build/package --out build/package-bench.tsv
+
+      - name: Upload the benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-bench-report
+          path: build/package-bench.tsv
+
+      - name: Pack the package
+        run: npm pack ./build/package --pack-destination .
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-npm-package
+          path: dasmig-user-*.tgz
+
   # Benchmarks: a report, not a gate yet (see bench/bench.hpp), uploaded as
   # the bench-report artifact.
   bench:
