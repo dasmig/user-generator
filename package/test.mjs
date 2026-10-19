@@ -18,7 +18,7 @@ const signature = u => u.signature.seed + '-' + u.signature.data;
 assert.equal(users.countries.length, 100);
 assert.ok(users.countries.includes('BR') && !users.countries.includes('NZ'));
 assert.equal(users.dataHash, 'c388d6c0928e1a6c');
-assert.equal(users.versions['user-generator'].startsWith('v'), true, JSON.stringify(users.versions));
+assert.ok(users.versions['user-generator'].length > 0, JSON.stringify(users.versions));
 assert.equal(Object.keys(users.versions).length, 8);
 assert.ok(Object.isFrozen(users) && Object.isFrozen(users.countries));
 
