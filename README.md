@@ -29,15 +29,19 @@ Angelica Cristina (angelica.c_1997) <angelica.c@gmail.com>, Brazil
 
 - **Ask for What You Need**. A `user_request` can fix the country, the sex, an age range, the reference date, the password policy, the youngest sign-up age, the service start and the status. What is left out is drawn.
 
-- **Your Data**. The platform, status, locale and time-zone tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
-
 - **Deterministic Seeding**. `get_user(request, seed)` is a pure function of the request, the seed and the data, and `user::seed()` replays a previous user. Each part draws from its own stream split from the seed, so forcing one choice, such as the status, does not shift the others.
 
 - **Batch Generation**. Generate thousands of users from one seed, on several threads with the same output for any thread count, unique by a key such as the email, and stream them as JSON Lines or CSV (see the usage guide).
 
 - **Identical Everywhere**. A seed gives the same result on every compiler, standard library and CPU (GCC, Clang, MSVC, Emscripten; x86-64 and ARM64), checked by known-answer tests.
 
+- **Extensible Data**. The platform, status, locale and time-zone tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
+
 - **JSON and Replay**. `to_json()` writes each library's result as that library writes it; `signature()` records the seed and a hash of the data of all seven libraries and the account tables.
+
+- **Compiled-in Data**. Define `DASMIG_USER_EMBED` to build the `lite` tier of the user tables into the program, for WebAssembly and other builds without files. The libraries it composes have their own `DASMIG_*_EMBED` switches.
+
+- **Multi-Instance Support**. Construct independent `usg` instances, each with its own tables and its own set of source libraries (`usg::sources`).
 
 ## Integration
 
