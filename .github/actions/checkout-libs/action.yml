@@ -8,15 +8,15 @@ runs:
   using: composite
   steps:
     - uses: actions/checkout@v4
-      with: {repository: dasmig/address-generator, ref: v2.0.1, path: libs/address-generator}
+      with: {repository: dasmig/address-generator, ref: v2.1.0, path: libs/address-generator}
     - uses: actions/checkout@v4
-      with: {repository: dasmig/birth-generator, ref: v3.1.2, path: libs/birth-generator}
+      with: {repository: dasmig/birth-generator, ref: v3.2.0, path: libs/birth-generator}
     - uses: actions/checkout@v4
-      with: {repository: dasmig/country-generator, ref: v3.1.2, path: libs/country-generator}
+      with: {repository: dasmig/country-generator, ref: v3.2.0, path: libs/country-generator}
     - uses: actions/checkout@v4
       with: {repository: dasmig/email-generator, ref: v2.1.1, path: libs/email-generator}
     - uses: actions/checkout@v4
-      with: {repository: dasmig/name-generator, ref: v4.3.0, path: libs/name-generator}
+      with: {repository: dasmig/name-generator, ref: v4.5.0, path: libs/name-generator}
     - uses: actions/checkout@v4
       with: {repository: dasmig/nickname-generator, ref: v5.2.0, path: libs/nickname-generator}
     - uses: actions/checkout@v4
