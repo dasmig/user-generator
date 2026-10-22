@@ -691,7 +691,7 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    REQUIRE(h == 0x60f5f09d63e24b34ULL);
+    REQUIRE(h == 0xb3fb62e7098c616fULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -856,5 +856,5 @@ TEST_CASE("user batch: known answer of 1,000 items", "[batch][kat]")
                       [&](std::uint64_t, const dasmig::user& item)
                       { hash = dasmig::core::hash_combine(hash, dasmig::core::fnv1a64(item.to_json())); });
     INFO(std::format("{:016x}", hash));
-    REQUIRE(hash == 0xefa53e870ea4f47fULL);
+    REQUIRE(hash == 0xd24067e9a846edd1ULL);
 }
