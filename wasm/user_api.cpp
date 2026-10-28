@@ -36,7 +36,7 @@ std::string hex(std::uint64_t value)
 // The request the C API's string and number arguments describe; "" and -1
 // leave a choice to the generator.
 dasmig::user_request make_request(const char* country, const char* sex, int age_min, int age_max,
-                                  const char* reference_date, int safe, const char* status)
+                                  const char* reference_date, int safe, const char* status, int device)
 {
     dasmig::user_request request;
     if (*country != '\0') request.country = country;
@@ -54,6 +54,7 @@ dasmig::user_request make_request(const char* country, const char* sex, int age_
     if (*reference_date != '\0') request.reference_date = parse_reference_date(reference_date);
     request.safe = safe != 0;
     if (*status != '\0') request.status = status;
+    request.device = device != 0;
     return request;
 }
 
@@ -75,15 +76,17 @@ extern "C"
 ///        domains, fictional phone numbers where a country has a range).
 /// @param status An account status key (`active`, `inactive`, `unverified`,
 ///        `suspended`), or "" to draw one.
+/// @param device Non-zero to add the device of the last sign-in
+///        (user_request::device), under `device`.
 /// @param seed 1 to 16 hexadecimal digits, or "" for a random seed (the
 ///        user's signature has the seed that replays it).
 EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate(const char* country, const char* sex, int age_min,
                                                       int age_max, const char* reference_date, int safe,
-                                                      const char* status, const char* seed)
+                                                      const char* status, int device, const char* seed)
 {
     try
     {
-        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status);
+        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status, device);
 
         auto& generator = dasmig::usg::instance();
         return reply(*seed == '\0' ? generator.get_user(request).to_json()
@@ -104,12 +107,12 @@ EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate(const char* country, const
 /// @param count Number of users (0 or more).
 EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate_batch(const char* country, const char* sex, int age_min,
                                                             int age_max, const char* reference_date, int safe,
-                                                            const char* status, const char* seed, double first,
-                                                            int count)
+                                                            const char* status, int device, const char* seed,
+                                                            double first, int count)
 {
     try
     {
-        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status);
+        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status, device);
         if (*seed == '\0') throw std::invalid_argument("a batch needs a seed");
         if (count < 0) throw std::invalid_argument("count must not be negative");
         if (!(first >= 0.0 && first <= 9007199254740991.0) || first != std::floor(first))
@@ -129,8 +132,10 @@ EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate_batch(const char* country,
     catch (const std::exception& error) { return reply(error_json(error.what())); }
 }
 
-/// @brief What this module can generate: the supported countries and the hash
-///        of the eight libraries' data.
+/// @brief What this module can generate: the supported countries, the hash
+///        of the eight libraries' data (`data`, the signature of a user
+///        without a device) and device-generator's (`device_data`, combined
+///        into the signature of a user with one).
 EMSCRIPTEN_KEEPALIVE const char* dasmig_user_info()
 {
     try
@@ -138,7 +143,10 @@ EMSCRIPTEN_KEEPALIVE const char* dasmig_user_info()
         dasmig::core::json_writer w;
         w.begin_object().key("countries").begin_array();
         for (const auto& code : dasmig::usg::instance().supported_countries()) w.value(code);
-        w.end_array().field("data", hex(dasmig::usg::instance().data_hash())).end_object();
+        w.end_array()
+            .field("data", hex(dasmig::usg::instance().data_hash()))
+            .field("device_data", hex(dasmig::dvg::instance().data_hash()))
+            .end_object();
         return reply(w.str());
     }
     catch (const std::exception& error) { return reply(error_json(error.what())); }

@@ -622,6 +622,151 @@ TEST_CASE("status shares follow the data", "[account][stats]")
 }
 
 // ---------------------------------------------------------------------------
+// The device
+// ---------------------------------------------------------------------------
+
+// The day an account was last used: the last login, or the sign-up for one
+// that never logged in, no earlier than the first day device-generator covers.
+static std::chrono::year_month_day last_seen(const dasmig::user& u)
+{
+    const auto& at = u.account.last_login.empty() ? u.account.created : u.account.last_login;
+    const std::chrono::sys_days day{std::chrono::days{to_seconds(at) / 86400}};
+    return std::chrono::year_month_day{
+        std::max(day, std::chrono::sys_days{dasmig::device_request::earliest_reference_date})};
+}
+
+TEST_CASE("no device unless the request asks for one", "[device]")
+{
+    const auto gen = make_loaded_generator();
+    const auto u = gen.get_user({.country = "BR"}, 3);
+    REQUIRE_FALSE(u.client.has_value());
+    REQUIRE(u.to_json().find("\"device\":{") == std::string::npos);
+    REQUIRE(u.signature().data == gen.data_hash());
+}
+
+TEST_CASE("the device is device-generator's for the account", "[device]")
+{
+    const auto gen = make_loaded_generator();
+    const auto& devices = dasmig::dvg::instance();
+    for (std::uint64_t seed = 0; seed < 300; ++seed)
+    {
+        const auto u = gen.get_user({.device = true}, seed);
+        REQUIRE(u.client.has_value());
+        const auto& d = *u.client;
+        REQUIRE(d.country_code == u.country_code);
+        REQUIRE(d.platform == u.account.platform);
+        REQUIRE(d.kind == u.account.device);
+        REQUIRE(d.os == u.account.os);
+        REQUIRE(d.accept_language.starts_with(u.account.locale));
+        // The same device as a call of its own, from the user's "device" stream.
+        const auto alone = devices.get_device({.country = u.country_code,
+                                               .platform = u.account.platform,
+                                               .locale = u.account.locale,
+                                               .reference_date = last_seen(u)},
+                                              dasmig::core::rng{seed}.split("device")());
+        REQUIRE(d.to_json() == alone.to_json());
+        REQUIRE(u.signature().data == dasmig::core::hash_combine(gen.data_hash(), devices.data_hash()));
+    }
+}
+
+TEST_CASE("asking for the device changes nothing else", "[device][seed]")
+{
+    const auto gen = make_loaded_generator();
+    const auto countries = dasmig::dvg::instance().countries();
+    int same_country = 0;
+    for (std::uint64_t seed = 0; seed < 300; ++seed)
+    {
+        // A fixed country and, where the drawn country has devices, a drawn one.
+        for (const bool drawn : {false, true})
+        {
+            const dasmig::user_request off{.country = drawn ? std::nullopt : std::optional<std::string>{"JP"}};
+            auto on = off;
+            on.device = true;
+            const auto a = gen.get_user(off, seed);
+            if (drawn && !std::ranges::binary_search(countries, a.country_code)) continue;
+            same_country += drawn ? 1 : 0;
+            auto b = gen.get_user(on, seed);
+            REQUIRE(b.client.has_value());
+            b.client.reset();
+            // Without the device and the signature's data hash, the JSON is the same.
+            const auto strip = [](std::string json) { return json.substr(0, json.find("\"signature\":")); };
+            REQUIRE(strip(a.to_json()) == strip(b.to_json()));
+            REQUIRE(a.seed() == b.seed());
+        }
+    }
+    REQUIRE(same_country > 250); // device-generator has nearly every country users are drawn from
+}
+
+TEST_CASE("a drawn country with a device is one device-generator has", "[device]")
+{
+    const auto gen = make_loaded_generator();
+    const auto countries = dasmig::dvg::instance().countries();
+    for (std::uint64_t seed = 0; seed < 1000; ++seed)
+    {
+        const auto u = gen.get_user({.device = true}, seed);
+        REQUIRE(std::ranges::binary_search(countries, u.country_code));
+    }
+}
+
+TEST_CASE("a safe user's device has a documentation address", "[device][safe]")
+{
+    const auto gen = make_loaded_generator();
+    for (std::uint64_t seed = 0; seed < 100; ++seed)
+    {
+        REQUIRE(gen.get_user({.safe = true, .device = true}, seed).client->reserved);
+        REQUIRE_FALSE(gen.get_user({.device = true}, seed).client->reserved);
+    }
+}
+
+TEST_CASE("the device is seen at the last sign-in", "[device][dates]")
+{
+    const auto gen = make_loaded_generator();
+    // Never logged in: the sign-up day.
+    const auto fresh = gen.get_user({.country = "US", .status = "unverified", .device = true}, 5);
+    REQUIRE(fresh.account.last_login.empty());
+    const auto alone = dasmig::dvg::instance().get_device(
+        {.country = "US", .platform = fresh.account.platform, .locale = fresh.account.locale,
+         .reference_date = last_seen(fresh)},
+        dasmig::core::rng{5}.split("device")());
+    REQUIRE(fresh.client->to_json() == alone.to_json());
+
+    // A login before 2021 is seen at 2021-01-01, the earliest date device-generator covers.
+    const auto old = gen.get_user({.country = "US",
+                                   .reference_date = std::chrono::year{2016} / 6 / 1,
+                                   .device = true},
+                                  8);
+    REQUIRE(to_seconds(old.account.last_login.empty() ? old.account.created : old.account.last_login) <
+            date_seconds(dasmig::device_request::earliest_reference_date));
+    const auto at_earliest = dasmig::dvg::instance().get_device(
+        {.country = "US", .platform = old.account.platform, .locale = old.account.locale,
+         .reference_date = dasmig::device_request::earliest_reference_date},
+        dasmig::core::rng{8}.split("device")());
+    REQUIRE(old.client->to_json() == at_earliest.to_json());
+}
+
+TEST_CASE("the device comes from the generator's own device instance", "[device][loading]")
+{
+    dasmig::dvg empty;
+    auto gen = make_loaded_generator();
+    dasmig::usg own{dasmig::usg::sources{.device = &empty}};
+    REQUIRE(own.load(dasmig::dataset::lite));
+    REQUIRE(own.get_user({.country = "FR"}, 1).to_json() == gen.get_user({.country = "FR"}, 1).to_json());
+    REQUIRE_THROWS_AS(own.get_user({.country = "FR", .device = true}, 1), std::runtime_error);
+}
+
+TEST_CASE("the device in JSON", "[device][json]")
+{
+    const auto gen = make_loaded_generator();
+    const auto u = gen.get_user({.country = "FR", .device = true}, 7);
+    const auto json = u.to_json();
+    const auto device_at = json.find("\"device\":{\"country_code\":\"FR\"");
+    REQUIRE(device_at != std::string::npos);
+    REQUIRE(device_at > json.find("\"account\":{"));
+    REQUIRE(device_at < json.rfind("\"signature\":"));
+    REQUIRE(json.find("\"user_agent\":") != std::string::npos);
+}
+
+// ---------------------------------------------------------------------------
 // Conversion and JSON
 // ---------------------------------------------------------------------------
 
@@ -692,6 +837,28 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
     }
     INFO(std::format("{:016x}", h));
     REQUIRE(h == 0xb3fb62e7098c616fULL);
+}
+
+TEST_CASE("known answers with a device", "[kat][device]")
+{
+    const auto gen = make_loaded_generator();
+    // The same user as above, and the device of its last login (2023-05-22),
+    // from the pinned device-generator release.
+    const auto u = gen.get_user({.country = "BR", .person_sex = dasmig::sex::female, .device = true}, 42);
+    REQUIRE(u.name == "Yara Carvalho Souza");
+    REQUIRE(u.account.last_login == "2023-05-22T04:07:35Z");
+    REQUIRE(u.client->to_string() == "Chrome 113 on Android 13 (Samsung Galaxy A52), 2801:9c:db5a:14cb:9650:dec6:5843:7cca");
+    REQUIRE(u.client->user_agent ==
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Mobile Safari/537.36");
+    REQUIRE(u.client->accept_language == "pt-BR,pt;q=0.9,en;q=0.8");
+
+    std::uint64_t h = 0xcbf29ce484222325ULL;
+    for (std::uint64_t s = 0; s < 500; ++s)
+    {
+        h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({.device = true}, s).to_json()));
+    }
+    INFO(std::format("{:016x}", h));
+    REQUIRE(h == 0xb00c6e6032e9fb47ULL);
 }
 
 // ---------------------------------------------------------------------------

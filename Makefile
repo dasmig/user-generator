@@ -2,8 +2,8 @@ CXX      := clang++
 # The libraries this one composes are sibling checkouts (see README.md); set
 # LIBS to the folder that holds them. Their lite data is compiled in.
 LIBS     ?= ..
-LIB_DIRS := address birth country email name nickname phone
-EMBED    := $(addprefix -DDASMIG_,ADDRESS_EMBED BIRTH_EMBED COUNTRY_EMBED EMAIL_EMBED NAME_EMBED NICKNAME_EMBED PHONE_EMBED)
+LIB_DIRS := address birth country device email name nickname phone
+EMBED    := $(addprefix -DDASMIG_,ADDRESS_EMBED BIRTH_EMBED COUNTRY_EMBED DEVICE_EMBED EMAIL_EMBED NAME_EMBED NICKNAME_EMBED PHONE_EMBED)
 CXXFLAGS := -std=c++23 -Wall -Wextra -Wpedantic -Wno-c2y-extensions -I. $(foreach d,$(LIB_DIRS),-I$(LIBS)/$(d)-generator) $(EMBED)
 BUILD    := build
 PYTHON   := python3

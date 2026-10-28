@@ -14,6 +14,8 @@ runs:
     - uses: actions/checkout@v4
       with: {repository: dasmig/country-generator, ref: v3.2.0, path: libs/country-generator}
     - uses: actions/checkout@v4
+      with: {repository: dasmig/device-generator, ref: v1.0.2, path: libs/device-generator}
+    - uses: actions/checkout@v4
       with: {repository: dasmig/email-generator, ref: v2.1.1, path: libs/email-generator}
     - uses: actions/checkout@v4
       with: {repository: dasmig/name-generator, ref: v4.5.0, path: libs/name-generator}

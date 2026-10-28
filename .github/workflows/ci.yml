@@ -12,8 +12,8 @@ permissions:
 # .github/actions/checkout-libs) with their lite data compiled in.
 env:
   LIBS: libs
-  LIB_FLAGS: -Ilibs/address-generator -Ilibs/birth-generator -Ilibs/country-generator -Ilibs/email-generator -Ilibs/name-generator -Ilibs/nickname-generator -Ilibs/phone-generator -DDASMIG_ADDRESS_EMBED -DDASMIG_BIRTH_EMBED -DDASMIG_COUNTRY_EMBED -DDASMIG_EMAIL_EMBED -DDASMIG_NAME_EMBED -DDASMIG_NICKNAME_EMBED -DDASMIG_PHONE_EMBED
-  MSVC_LIB_FLAGS: /Ilibs\address-generator /Ilibs\birth-generator /Ilibs\country-generator /Ilibs\email-generator /Ilibs\name-generator /Ilibs\nickname-generator /Ilibs\phone-generator /DDASMIG_ADDRESS_EMBED /DDASMIG_BIRTH_EMBED /DDASMIG_COUNTRY_EMBED /DDASMIG_EMAIL_EMBED /DDASMIG_NAME_EMBED /DDASMIG_NICKNAME_EMBED /DDASMIG_PHONE_EMBED
+  LIB_FLAGS: -Ilibs/address-generator -Ilibs/birth-generator -Ilibs/country-generator -Ilibs/device-generator -Ilibs/email-generator -Ilibs/name-generator -Ilibs/nickname-generator -Ilibs/phone-generator -DDASMIG_ADDRESS_EMBED -DDASMIG_BIRTH_EMBED -DDASMIG_COUNTRY_EMBED -DDASMIG_DEVICE_EMBED -DDASMIG_EMAIL_EMBED -DDASMIG_NAME_EMBED -DDASMIG_NICKNAME_EMBED -DDASMIG_PHONE_EMBED
+  MSVC_LIB_FLAGS: /Ilibs\address-generator /Ilibs\birth-generator /Ilibs\country-generator /Ilibs\device-generator /Ilibs\email-generator /Ilibs\name-generator /Ilibs\nickname-generator /Ilibs\phone-generator /DDASMIG_ADDRESS_EMBED /DDASMIG_BIRTH_EMBED /DDASMIG_COUNTRY_EMBED /DDASMIG_DEVICE_EMBED /DDASMIG_EMAIL_EMBED /DDASMIG_NAME_EMBED /DDASMIG_NICKNAME_EMBED /DDASMIG_PHONE_EMBED
 
 jobs:
   build-and-test:

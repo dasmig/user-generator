@@ -28,6 +28,12 @@ export interface UserRequest {
   /** Force the account status. Unset draws one. */
   status?: AccountStatus;
   /**
+   * Add `device`, the device of the last sign-in (device-generator): drawn with the account's country,
+   * platform and locale at the last login (the sign-up time for an account that never logged in), with
+   * a documentation-range IP address when `safe`. Default false; turning it on changes nothing else.
+   */
+  device?: boolean;
+  /**
    * The call seed, a 64-bit unsigned integer: a bigint, a non-negative safe integer, or a string
    * of 1-16 **hexadecimal** digits with an optional `0x` (so `'42'` is 0x42, not 42), the form of
    * `signature.seed`. Unset draws a random one. The same seed, request and data give the same user.
@@ -124,6 +130,42 @@ export interface Account {
   currency: string;
 }
 
+/** The device a user last signed in from (device-generator's JSON). */
+export interface Device {
+  country_code: string;
+  /** The account's platform key. */
+  platform: string;
+  platform_label: string;
+  /** `phone`, `tablet`, `desktop` or `other`. */
+  kind: string;
+  /** May be empty. */
+  maker: string;
+  /** Empty for most desktops. */
+  model: string;
+  os: string;
+  /** Empty where no version is modelled. */
+  os_version: string;
+  /** Browser key (`chrome`, `safari`, `edge`, `firefox`, `samsung`, `opera`, `yandex`); empty for `other`. */
+  browser: string;
+  browser_version: string;
+  /** `Blink`, `WebKit` or `Gecko`. */
+  engine: string;
+  /** The `User-Agent` header this device sends. */
+  user_agent: string;
+  /** The `Accept-Language` header, from the account's locale. */
+  accept_language: string;
+  /** The low-entropy client hints, each empty when the browser does not send it. */
+  client_hints: { sec_ch_ua: string; sec_ch_ua_mobile: string; sec_ch_ua_platform: string };
+  /** CSS pixels (portrait for phones and tablets). */
+  screen: { width: number; height: number; pixel_ratio: number };
+  /** Dotted quad or RFC 5952 text. */
+  ip: string;
+  ip_version: 4 | 6;
+  /** True for an address from a documentation range (`safe`). */
+  reserved: boolean;
+  signature: Signature;
+}
+
 /** One user: each library's result, as that library writes it. */
 export interface User {
   name: string;
@@ -138,6 +180,8 @@ export interface User {
   phone: Phone;
   email: Email;
   account: Account;
+  /** Only with `device: true`. */
+  device?: Device;
   /** `generate({ ...request, seed: user.signature.seed })` replays this user. */
   signature: Signature;
 }
@@ -150,6 +194,11 @@ export interface UserGenerator {
    * only while this is unchanged; it changes when a package update changes any library's data.
    */
   readonly dataHash: string;
+  /**
+   * Hash of device-generator's data (16 hex digits). The `signature.data` of a user with a device
+   * combines it with `dataHash`, so it changes when either does.
+   */
+  readonly deviceDataHash: string;
   /** The library versions (git tags) this module was built from. */
   readonly versions: Readonly<Record<string, string>>;
   /**
