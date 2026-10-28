@@ -40,7 +40,7 @@ int main()
 
 ## Installation
 
-Copy `dasmig/usergen.hpp`, `dasmig/core.hpp` and the `dasmig/core/` directory into your include path, keeping them together. The seven libraries it composes must be on the include path too, each with its own data: address, birth, country, email, name, nickname and phone. Supply `resources/` next to the program, or define `DASMIG_USER_EMBED` to compile the account tables in; the other libraries have their own `DASMIG_<NAME>_EMBED` macros for their `lite` tiers.
+Copy `dasmig/usergen.hpp`, `dasmig/core.hpp` and the `dasmig/core/` directory into your include path, keeping them together. The libraries it composes must be on the include path too: address, birth, country, email, name, nickname and phone, each with its own data, and device, whose data is needed only for users with a device (`user_request::device`). Supply `resources/` next to the program, or define `DASMIG_USER_EMBED` to compile the account tables in; the other libraries have their own `DASMIG_<NAME>_EMBED` macros for their `lite` tiers.
 
 user-generator does not need persona-generator, and a user carries no body, traits, interests, job or city.
 
@@ -63,7 +63,7 @@ gen.supported_countries(); // the countries every part has data for
 dasmig::nng::instance().load(dasmig::dataset::full);
 ```
 
-A `usg` draws from the singletons of the seven libraries by default. Construct one over your own instances to use different data side by side:
+A `usg` draws from the singletons of the seven libraries by default, and from device-generator's for a user with a device (`sources::device`, null by default, means `dvg::instance()`, which loads its data on the first such user). Construct one over your own instances to use different data side by side:
 
 ```cpp
 dasmig::adg my_addresses;
@@ -96,6 +96,7 @@ Every field of a `user_request` is optional, and what is left out is drawn:
 | `sign_up_age` | the youngest age at which a person signs up | 13 |
 | `service_start` | the earliest date an account can be created | ten years before the reference date |
 | `status` | an account status key | drawn |
+| `device` | add the device of the last sign-in (see below) | false |
 
 ```cpp
 dasmig::user_request request;
@@ -122,6 +123,7 @@ u.location;     // dasmig::address: u.location.formatted(), .lines(), .postcode.
 u.mobile;       // dasmig::phone: u.mobile.e164(), .international(), .national()
 u.mail;         // dasmig::email: u.mail.address(), .local, .domain
 u.account;      // user_account, below
+u.client;       // std::optional<dasmig::device>: the device of the last sign-in, with request.device
 ```
 
 The fields of `u.account`:
@@ -196,6 +198,25 @@ auto u = gen.get_user(request);
 u.mail.address();   // ...@example.com
 ```
 
+## The Device
+
+With `request.device`, a user also has `client`, the device of the last sign-in, from [device-generator](https://github.com/dasmig/device-generator): a model, OS and browser version that fit together at a date, the `User-Agent` header and client hints that combination sends, an `Accept-Language` header, a screen and an IP address in the country.
+
+```cpp
+dasmig::user_request request;
+request.country = "BR";
+request.person_sex = dasmig::sex::female;
+request.device = true;
+auto u = gen.get_user(request, 42);
+u.client->to_string();     // Chrome 113 on Android 13 (Samsung Galaxy A52), 2801:9c:db5a:14cb:9650:dec6:5843:7cca
+u.client->user_agent;      // Mozilla/5.0 (Linux; Android 10; K) ... Chrome/113.0.0.0 Mobile Safari/537.36
+u.client->accept_language; // pt-BR,pt;q=0.9,en;q=0.8
+```
+
+The device is device-generator's `get_device` for the user's country, the account's `platform` (so `client->kind` and `client->os` are the account's `device` and `os`) and `locale`, at the day of the last login, or of the sign-up for an account that never logged in. device-generator covers dates from 2021-01-01, so an earlier login is seen at that date. With `safe`, the IP address is from a documentation range (RFC 5737, RFC 3849) and `client->reserved` is true. It draws from the user's `"device"` stream, so it is `get_device(that request, core::rng{seed}.split("device")())`, and turning it on changes nothing else in the user. A drawn country is one device-generator has data for; every country of the shipped data has.
+
+The device is off by default, so users without it, their JSON and their signatures are those of releases before it. device-generator's header must be on the include path either way (`usergen.hpp` includes it); its data is loaded only by the first user with a device.
+
 ## Seeding and Deterministic Generation
 
 - `get_user(request, seed)` gives the same result for the same request, seed and data, on every platform, without advancing the instance engine.
@@ -241,6 +262,7 @@ Every result records the seed and the data it came from:
 auto u = gen.get_user(dasmig::user_request{});
 u.signature().seed; // the call seed
 u.signature().data; // gen.data_hash() when it was generated: the account tables and the seven libraries
+                    // (combined with device-generator's data_hash() for a user with a device)
 ```
 
 `to_json()` gives the result as JSON. Each library's result is written as that library writes it, next to the user's own fields:
@@ -256,13 +278,15 @@ u.signature().data; // gen.data_hash() when it was generated: the account tables
  "signature":{"seed":"000000000000002a","data":"..."}}
 ```
 
+A user with a device has `"device":{...}` after `"account"`, as device-generator writes it.
+
 Seeds are strings because JavaScript numbers cannot hold every 64-bit value. `to_json(writer)` writes into an existing `dasmig::core::json_writer`, for composing larger documents.
 
 ## Compiled-in Data
 
 Define `DASMIG_USER_EMBED` before including the header to compile the account tables' `lite` tier into the program. `load(dataset::lite)` and `instance()` then use it and need no files. The compiled-in data has the same `data_hash()` as the files, so seeds replay the same either way.
 
-`dasmig/usergen_data.hpp` is generated from `resources/lite` by `make embed`; CI checks it is up to date. Define the other libraries' macros too (`DASMIG_ADDRESS_EMBED`, `DASMIG_BIRTH_EMBED`, `DASMIG_COUNTRY_EMBED`, `DASMIG_EMAIL_EMBED`, `DASMIG_NAME_EMBED`, `DASMIG_NICKNAME_EMBED`, `DASMIG_PHONE_EMBED`) for a build without files.
+`dasmig/usergen_data.hpp` is generated from `resources/lite` by `make embed`; CI checks it is up to date. Define the other libraries' macros too (`DASMIG_ADDRESS_EMBED`, `DASMIG_BIRTH_EMBED`, `DASMIG_COUNTRY_EMBED`, `DASMIG_DEVICE_EMBED`, `DASMIG_EMAIL_EMBED`, `DASMIG_NAME_EMBED`, `DASMIG_NICKNAME_EMBED`, `DASMIG_PHONE_EMBED`) for a build without files.
 
 ## Thread Safety
 
@@ -303,6 +327,6 @@ gen.for_each_user(request, {.count = 1'000'000, .threads = 0}, 42, lines);
 
 | Exception | When |
 |-----------|------|
-| `std::runtime_error` | Any generation call before the account tables or a library has data |
-| `std::invalid_argument` | `ages.min > ages.max`, or `ages.min < sign_up_age`; `reference_date` or `service_start` is not a date; a password policy with `min_length` of 0, `min_length > max_length`, `max_length` over 256, no allowed class, or `require_each` with fewer characters than classes; an unknown `status`; a `country` that is not a code or that a library has no data for (including a name culture or birth table without the sex asked for); `extend` of a file that is not one of the user tables |
+| `std::runtime_error` | Any generation call before the account tables or a library has data; a user with a device when device-generator has none |
+| `std::invalid_argument` | `ages.min > ages.max`, or `ages.min < sign_up_age`; `reference_date` or `service_start` is not a date; a password policy with `min_length` of 0, `min_length > max_length`, `max_length` over 256, no allowed class, or `require_each` with fewer characters than classes; an unknown `status`; a `country` that is not a code or that a library has no data for (including a name culture or birth table without the sex asked for, and device-generator for a user with a device); a user with a device whose platform device-generator does not know (from a layer of `platforms.tsv`); `extend` of a file that is not one of the user tables |
 | `dasmig::core::tsv_error` | A malformed table or layer (message gives file, line and column); the data is unchanged |

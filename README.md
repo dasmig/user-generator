@@ -25,9 +25,11 @@ Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 
 - **A Whole Account**. A password to a policy (length, character classes, no look-alike characters), random or in the human style (common words, names, years and digits), a sign-up time after the person is old enough and after the service started, a last login that follows the account's status (active, inactive, unverified, suspended), a device and platform by country, a locale, a time zone and a currency.
 
-- **Safe Test Data**. `safe` makes the email use a reserved domain (`example.com`, `.net`, `.org`) and the phone number a number from the range regulators set aside for fiction, where the country has one, so a generated user cannot reach anyone.
+- **The Device, When Asked**. `request.device` adds the device of the last sign-in from [device-generator](https://github.com/dasmig/device-generator): a model, OS and browser that fit together at the date of the last login, the user agent and client hints they send, the `Accept-Language` of the account's locale, a screen and an IP address in the country, on the account's platform. Off by default; turning it on changes nothing else.
 
-- **Ask for What You Need**. A `user_request` can fix the country, the sex, an age range, the reference date, the password policy, the youngest sign-up age, the service start and the status. What is left out is drawn.
+- **Safe Test Data**. `safe` makes the email use a reserved domain (`example.com`, `.net`, `.org`) and the phone number a number from the range regulators set aside for fiction, where the country has one, so a generated user cannot reach anyone; a device then has an IP address from a documentation range.
+
+- **Ask for What You Need**. A `user_request` can fix the country, the sex, an age range, the reference date, the password policy, the youngest sign-up age, the service start and the status, and ask for the device. What is left out is drawn.
 
 - **Deterministic Seeding**. `get_user(request, seed)` is a pure function of the request, the seed and the data, and `user::seed()` replays a previous user. Each part draws from its own stream split from the seed, so forcing one choice, such as the status, does not shift the others.
 
@@ -37,7 +39,7 @@ Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 
 - **Extensible Data**. The platform, status, locale and time-zone tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
 
-- **JSON and Replay**. `to_json()` writes each library's result as that library writes it; `signature()` records the seed and a hash of the data of all seven libraries and the account tables.
+- **JSON and Replay**. `to_json()` writes each library's result as that library writes it; `signature()` records the seed and a hash of the data of all seven libraries and the account tables (and device-generator's, for a user with a device).
 
 - **Compiled-in Data**. Define `DASMIG_USER_EMBED` to build the `lite` tier of the user tables into the program, for WebAssembly and other builds without files. The libraries it composes have their own `DASMIG_*_EMBED` switches.
 

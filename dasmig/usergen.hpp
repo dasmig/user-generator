@@ -27,6 +27,7 @@
 #include <dasmig/addressgen.hpp>
 #include <dasmig/birthgen.hpp>
 #include <dasmig/countrygen.hpp>
+#include <dasmig/devicegen.hpp>
 #include <dasmig/emailgen.hpp>
 #include <dasmig/namegen.hpp>
 #include <dasmig/nicknamegen.hpp>
@@ -120,6 +121,15 @@ struct user_request
     /// @brief Force an account status by its key (`active`, `inactive`,
     ///        `unverified`, `suspended` in the shipped data). Unset draws one.
     std::optional<std::string> status{}; // NOLINT(readability-redundant-member-init)
+
+    /// @brief Add the device the user last signed in from (user::client),
+    ///        from device-generator: drawn with the account's country,
+    ///        platform and locale, at the last login (the sign-up time for an
+    ///        account that never logged in), with a documentation-range IP
+    ///        address when `safe`. Off by default. Turning it on changes
+    ///        nothing else in a user, except that a drawn country is one
+    ///        device-generator has too.
+    bool device{false};
 };
 
 /// @brief The online side of a user: the login, the dates, the device and the
@@ -159,6 +169,7 @@ class user
     dasmig::phone mobile;      ///< A phone number of the country.
     dasmig::email mail;        ///< An email address, in the person's name.
     user_account account;      ///< The login, dates, device and regional settings.
+    std::optional<dasmig::device> client; ///< The device of the last sign-in; only with user_request::device.
 
     /// @brief Retrieve the random seed used to generate this user.
     /// @return The call seed; pass it to get_user(request, seed) with
@@ -167,7 +178,8 @@ class user
 
     /// @brief The seed and the data this user was generated from.
     /// @return The replay signature; `data` combines the data hashes of the
-    ///         libraries and this one's.
+    ///         libraries and this one's (and device-generator's, for a user
+    ///         with a device).
     [[nodiscard]] const core::seed_signature& signature() const
     {
         return _signature;
@@ -193,7 +205,9 @@ class user
     /// Each library's result is written as that library writes it (`birth`,
     /// `address`, `phone`, `email`), next to `name`, `given`, `family`, `sex`,
     /// `age`, `country`, `account` and `signature`. `account` has `last_login`
-    /// as `null` for an account that never logged in.
+    /// as `null` for an account that never logged in. With
+    /// user_request::device, `device` follows `account`, as device-generator
+    /// writes it; without, the key is left out.
     /// @param w Writer positioned where a value is allowed.
     void to_json(core::json_writer& w) const
     {
@@ -228,6 +242,11 @@ class user
             .field("timezone", account.timezone)
             .field("currency", account.currency)
             .end_object();
+        if (client)
+        {
+            w.key("device");
+            client->to_json(w);
+        }
         w.key("signature");
         _signature.to_json(w);
         w.end_object();
@@ -286,7 +305,7 @@ enum class user_table : std::uint8_t
 /// every part, so they agree. Each part gets its own call seed, split from the
 /// user's seed by name (`"country"`, `"birth"`, `"name"`, `"username"`,
 /// `"email"`, `"phone"`, `"address"`, `"password"`, `"dates"`, `"status"`,
-/// `"platform"`, `"locale"`, `"timezone"`), so the user's seed replays all of
+/// `"platform"`, `"locale"`, `"timezone"`, `"device"`), so the user's seed replays all of
 /// it, and forcing one choice (a country, a status) does not shift the draws
 /// of the others. Output is identical on every compiler and platform
 /// (dasmig-core).
@@ -296,7 +315,8 @@ enum class user_table : std::uint8_t
 /// It holds the data of the account only (platforms, statuses, locales and
 /// time zones); the rest comes from the instances of the seven libraries it
 /// was built on (the singletons by default), so their data, their layers and
-/// their `lite` or `full` tiers are the user's.
+/// their `lite` or `full` tiers are the user's. A device, when a request asks
+/// for one, comes the same way from device-generator.
 ///
 /// @par Thread safety
 /// get_user(request, seed) is const and only calls const members of the
@@ -316,6 +336,7 @@ class usg
         adg* address{&adg::instance()};       ///< Postal addresses.
         phg* phone{&phg::instance()};         ///< Phone numbers.
         emg* email{&emg::instance()};         ///< Email addresses.
+        dvg* device{nullptr}; ///< Devices, for user_request::device; null uses dvg::instance(), loaded when a user first asks for a device.
     };
 
     /// @brief Default constructor — creates a generator with no account data,
@@ -384,10 +405,12 @@ class usg
         // birth can still refuse a country (a culture without names for one sex).
         auto draws = call.split("country");
         std::string last = "user-generator: no country has data in every library";
+        const auto device_countries = request.device ? device_source_().countries() : std::vector<std::string>{};
         for (int i = 0; i < max_country_attempts_; ++i)
         {
             const auto c = _from.country->get_country({}, draws());
             if (!in_contact_libraries_(c.cca2)) continue;
+            if (request.device && !std::ranges::binary_search(device_countries, c.cca2)) continue;
             try
             {
                 return build_(request, c.cca2, call, call_seed);
@@ -639,7 +662,8 @@ class usg
     }
 
     /// @brief Hash of the loaded data: this generator's tables and the data of
-    ///        the seven libraries. Recorded in each result's signature().
+    ///        the seven libraries. Recorded in each result's signature(); a
+    ///        user with a device combines it with device-generator's.
     /// @return A hash that changes when any of them does; 0 when this
     ///         generator's tables are empty.
     [[nodiscard]] std::uint64_t data_hash() const
@@ -1130,11 +1154,12 @@ class usg
         }
         const auto line = account_dates_(request, u, call);
         const auto& status = pick_status_(request, u, call);
-        place_login_(line, status.login, u);
+        const auto seen = place_login_(line, status.login, u);
         pick_platform_(u, call);
         u.account.locale = locale_(country, call);
         u.account.timezone = timezone_(country, call);
         u.account.currency = country.currency_code;
+        if (request.device) add_device_(request, seen, u, call);
         return u;
     }
 
@@ -1477,8 +1502,9 @@ class usg
     }
 
     // The last login by what the status says: within 90 days and towards the
-    // reference date, over a year ago, or never.
-    static void place_login_(const timeline& line, login_kind kind, user& u)
+    // reference date, over a year ago, or never. Returns the last time the
+    // account was used: the login, or the sign-up for one that never logged in.
+    static seconds_t place_login_(const timeline& line, login_kind kind, user& u)
     {
         const seconds_t created = line.created;
         const seconds_t latest = line.latest;
@@ -1487,22 +1513,25 @@ class usg
         constexpr seconds_t day = 86400;
         switch (kind)
         {
-        case login_kind::never: u.account.last_login.clear(); break;
+        case login_kind::never: u.account.last_login.clear(); return created;
         case login_kind::recent:
         {
             const seconds_t from = std::max(created, ref - 90 * day);
             const seconds_t span = std::max<seconds_t>(latest - from, 0);
-            u.account.last_login = iso_(latest - static_cast<seconds_t>(static_cast<double>(span) * x * x));
-            break;
+            const seconds_t at = latest - static_cast<seconds_t>(static_cast<double>(span) * x * x);
+            u.account.last_login = iso_(at);
+            return at;
         }
         case login_kind::stale:
         {
             const seconds_t to = ref - 365 * day;
-            u.account.last_login = to <= created ? iso_(created)
-                                                 : iso_(created + static_cast<seconds_t>(static_cast<double>(to - created) * x));
-            break;
+            const seconds_t at =
+                to <= created ? created : created + static_cast<seconds_t>(static_cast<double>(to - created) * x);
+            u.account.last_login = iso_(at);
+            return at;
         }
         }
+        return created;
     }
 
     // -- Platform, locale, time zone -------------------------------------------------
@@ -1562,6 +1591,30 @@ class usg
         const auto first = country.languages.substr(0, end);
         const auto lang = _model.languages.find(first);
         return (lang == _model.languages.end() ? std::string{"und"} : lang->second) + "-" + country.cca2;
+    }
+
+    // -- Device ---------------------------------------------------------------------
+
+    [[nodiscard]] const dvg& device_source_() const
+    {
+        return _from.device != nullptr ? *_from.device : dvg::instance();
+    }
+
+    // The device of the last sign-in, seen on the day of that sign-in. A day
+    // before the earliest device-generator covers (2021-01-01) is seen as that day.
+    void add_device_(const user_request& request, seconds_t seen, user& u, const core::rng& call) const
+    {
+        const auto& source = device_source_();
+        const std::chrono::sys_days day{std::chrono::days{(seen >= 0 ? seen : seen - 86399) / 86400}};
+        const std::chrono::sys_days earliest{device_request::earliest_reference_date};
+        device_request dr;
+        dr.country = u.country_code;
+        dr.platform = u.account.platform;
+        dr.locale = u.account.locale;
+        dr.reference_date = std::chrono::year_month_day{std::max(day, earliest)};
+        dr.safe = request.safe;
+        u.client = source.get_device(dr, call.split("device")());
+        u._signature.data = core::hash_combine(u._signature.data, source.data_hash());
     }
 
     [[nodiscard]] std::string timezone_(const dasmig::country& country, const core::rng& call) const

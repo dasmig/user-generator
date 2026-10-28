@@ -20,7 +20,8 @@ assert.equal(users.countries.length, 100);
 assert.ok(users.countries.includes('BR') && !users.countries.includes('NZ'));
 assert.equal(users.dataHash, '65c68ea7276bee78');
 assert.ok(users.versions['user-generator'].length > 0, JSON.stringify(users.versions));
-assert.equal(Object.keys(users.versions).length, 8);
+assert.equal(Object.keys(users.versions).length, 9);
+assert.equal(users.deviceDataHash, 'c9d3e7931dda7213');
 assert.ok(Object.isFrozen(users) && Object.isFrozen(users.countries));
 
 // Known answers.
@@ -42,6 +43,21 @@ assert.equal(summary(five), 'Christian Mercado (christianm) <mercado49@example.o
 assert.equal(five.email.reserved, true);
 assert.equal(five.account.status, 'suspended');
 
+// The device of the last sign-in: off by default, and nothing else changes when it is on.
+const device = d => `${d.browser} ${d.browser_version} on ${d.os} ${d.os_version} (${d.maker} ${d.model}), ${d.ip}`;
+assert.equal('device' in one, false);
+const yara = users.generate({ country: 'BR', sex: 'female', device: true, seed: 42 });
+assert.equal(summary(yara), 'Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil');
+assert.equal(device(yara.device), 'chrome 113 on Android 13 (Samsung Galaxy A52), 2801:9c:db5a:14cb:9650:dec6:5843:7cca');
+assert.equal(signature(yara), '000000000000002a-907c150a4c07d41a');
+const { device: _, signature: __, ...withoutDevice } = yara;
+const { signature: ___, ...plain } = users.generate({ country: 'BR', sex: 'female', seed: 42 });
+assert.deepEqual(withoutDevice, plain);
+const fiveDevice = users.generate({ country: 'US', safe: true, status: 'suspended', device: true, seed: 5 });
+assert.equal(device(fiveDevice.device), 'safari 16.5 on iOS 16.5 (Apple iPhone 12), 2001:db8:4f49:2a01:fded:fe51:f18b:811f');
+assert.equal(fiveDevice.device.reserved, true);
+assert.equal(fiveDevice.device.platform, fiveDevice.account.platform);
+
 // The hash of 2,000 JSON documents, as the native build computes it.
 let hash = 0xcbf29ce484222325n;
 const mask = (1n << 64n) - 1n;
@@ -50,6 +66,12 @@ for (let s = 0; s < 2000; ++s) {
   for (const byte of encoder.encode(users.generateJson({ seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
 assert.equal(hash.toString(16), 'a504047d9e9dbd25');
+// And of 500 users with a device.
+hash = 0xcbf29ce484222325n;
+for (let s = 0; s < 500; ++s) {
+  for (const byte of encoder.encode(users.generateJson({ device: true, seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
+}
+assert.equal(hash.toString(16).padStart(16, '0'), '07779518fb9c3b61');
 
 // A random user replays from its seed.
 const random = users.generate({ country: 'DE', referenceDate: new Date(2026, 9, 15) });
@@ -96,6 +118,7 @@ for (const [request, kind, message] of [
   [{ ages: { min: 12, max: 20 } }, RangeError, /ages.min/],
   [{ ages: { min: 20, max: 121 } }, RangeError, /ages.max/],
   [{ safe: 1 }, TypeError, /safe/],
+  [{ device: 'yes' }, TypeError, /device must be a boolean/],
   [{ status: 'banned' }, RangeError, /status/],
   [{ status: 1 }, TypeError, /status/],
   [{ traits: 3 }, TypeError, /unknown field "traits"/],
@@ -141,6 +164,11 @@ assert.ok(lines.endsWith('\n'));
 assert.equal(lines.split('\n').length, 61);
 assert.deepEqual(lines.slice(0, -1).split('\n').map(line => JSON.parse(line)), batch);
 assert.deepEqual(users.generateBatch({ count: 0, seed: 1 }), []);
+const withDevices = users.generateBatch({ request: { ...request, device: true }, count: 5, seed: 7 });
+for (let i = 0; i < withDevices.length; ++i) {
+  assert.deepEqual(withDevices[i], users.generate({ ...request, device: true, seed: itemSeed(7n, i) }), `device user ${i}`);
+  assert.equal(withDevices[i].device.reserved, true);
+}
 assert.equal(users.generateBatchJsonl({ count: 0 }), '');
 // Without a seed the batch is random but each user replays from its signature.
 const unseeded = users.generateBatch({ count: 3 });
@@ -192,4 +220,4 @@ await assert.rejects(createUserPool({ workers: 0 }), RangeError);
 await assert.rejects(createUserPool({ workers: 1.5 }), TypeError);
 await assert.rejects(createUserPool({ threads: 2 }), TypeError);
 
-console.log('PASS: @dasmig/user matches the native known answers (5 users, 2,000-document hash), replay, requests, errors, batches and worker pools.');
+console.log('PASS: @dasmig/user matches the native known answers (7 users, 2,000-document and 500-device hashes), replay, requests, devices, errors, batches and worker pools.');

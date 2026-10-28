@@ -4,7 +4,7 @@
 import { versions } from './versions.mjs';
 import { batchPlan, integer, malformed, outOfRange, seedText } from './batch.mjs';
 
-const keys = new Set(['country', 'sex', 'ages', 'referenceDate', 'safe', 'status', 'seed']);
+const keys = new Set(['country', 'sex', 'ages', 'referenceDate', 'safe', 'status', 'device', 'seed']);
 const sexes = new Set(['male', 'female']);
 const statuses = new Set(['active', 'inactive', 'unverified', 'suspended']);
 
@@ -42,9 +42,9 @@ function parse(json) {
 export async function createGenerator(createModule, moduleOptions) {
   const module = await createModule(moduleOptions);
   const generate = module.cwrap('dasmig_user_generate', 'string',
-    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'string']);
+    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'number', 'string']);
   const generateBatchRaw = module.cwrap('dasmig_user_generate_batch', 'string',
-    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'string', 'number', 'number']);
+    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'number', 'string', 'number', 'number']);
   const requestKeys = new Set([...keys].filter(key => key !== 'seed'));
   const info = parse(module.cwrap('dasmig_user_info', 'string', [])());
   const countries = Object.freeze([...info.countries]);
@@ -55,7 +55,7 @@ export async function createGenerator(createModule, moduleOptions) {
     if (request === null || typeof request !== 'object' || Array.isArray(request)) malformed('must be an object');
     for (const key of Object.keys(request))
       if (!allowed.has(key)) malformed(`unknown field "${key}"; the fields are ${[...allowed].join(', ')}`);
-    const { country, sex, ages, referenceDate, safe, status } = request;
+    const { country, sex, ages, referenceDate, safe, status, device } = request;
 
     let code = '';
     if (country !== undefined) {
@@ -74,11 +74,12 @@ export async function createGenerator(createModule, moduleOptions) {
       if (min > max) outOfRange(`ages.min (${min}) must not be greater than ages.max (${max})`);
     }
     if (safe !== undefined && typeof safe !== 'boolean') malformed('safe must be a boolean');
+    if (device !== undefined && typeof device !== 'boolean') malformed('device must be a boolean');
     if (status !== undefined) {
       if (typeof status !== 'string') malformed('status must be a string');
       if (!statuses.has(status)) outOfRange(`status must be one of ${[...statuses].join(', ')}, not "${status}"`);
     }
-    return [code, sex ?? '', min, max, dateText(referenceDate), safe ? 1 : 0, status ?? ''];
+    return [code, sex ?? '', min, max, dateText(referenceDate), safe ? 1 : 0, status ?? '', device ? 1 : 0];
   }
 
   function generateJson(request = {}) {
@@ -95,6 +96,7 @@ export async function createGenerator(createModule, moduleOptions) {
   return Object.freeze({
     countries,
     dataHash: info.data,
+    deviceDataHash: info.device_data,
     versions,
     generateJson(request) {
       const json = generateJson(request);
