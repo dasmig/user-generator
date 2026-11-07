@@ -18,23 +18,25 @@ const signature = u => u.signature.seed + '-' + u.signature.data;
 
 assert.equal(users.countries.length, 100);
 assert.ok(users.countries.includes('BR') && !users.countries.includes('NZ'));
-assert.equal(users.dataHash, '65c68ea7276bee78');
+assert.equal(users.dataHash, 'a7d7a9a59df5d3a4');
 assert.ok(users.versions['user-generator'].length > 0, JSON.stringify(users.versions));
-assert.equal(Object.keys(users.versions).length, 9);
+assert.equal(Object.keys(users.versions).length, 11);
 assert.equal(users.deviceDataHash, 'c9d3e7931dda7213');
+assert.equal(users.identityDataHash, '14750e64ceb541ac');
+assert.equal(users.financeDataHash, '2ef270849d0c325c');
 assert.ok(Object.isFrozen(users) && Object.isFrozen(users.countries));
 
 // Known answers.
 const one = users.generate({ seed: 1 });
 assert.equal(summary(one), 'Hamilton Salvador Nogueira (hamilton.salvador23) <hamilton.salvador1990@gmail.com>, Brazil');
-assert.equal(signature(one), '0000000000000001-65c68ea7276bee78');
+assert.equal(signature(one), '0000000000000001-a7d7a9a59df5d3a4');
 assert.equal(one.age, 32);
 const two = users.generate({ seed: '2' });
 assert.equal(summary(two), 'Chang Shanghai (shanghaic1996) <shanghaic@qq.com>, China');
-assert.equal(signature(two), '0000000000000002-65c68ea7276bee78');
+assert.equal(signature(two), '0000000000000002-a7d7a9a59df5d3a4');
 const three = users.generate({ country: 'BR', sex: 'female', ages: { min: 25, max: 35 }, seed: 3n });
 assert.equal(summary(three), 'Luana Rufino (luanarufino7322) <luana_rufino96@gmail.com>, Brazil');
-assert.equal(signature(three), '0000000000000003-65c68ea7276bee78');
+assert.equal(signature(three), '0000000000000003-a7d7a9a59df5d3a4');
 const four = users.generate({ country: 'jp', referenceDate: '2030-03-09', seed: 4 });
 assert.equal(summary(four), 'Hidaka Hiromasa (hhiromasa66) <hidaka_hiromasa@gmail.com>, Japan');
 assert.equal(four.age, 63);
@@ -49,7 +51,7 @@ assert.equal('device' in one, false);
 const yara = users.generate({ country: 'BR', sex: 'female', device: true, seed: 42 });
 assert.equal(summary(yara), 'Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil');
 assert.equal(device(yara.device), 'chrome 113 on Android 13 (Samsung Galaxy A52), 2801:9c:db5a:14cb:9650:dec6:5843:7cca');
-assert.equal(signature(yara), '000000000000002a-907c150a4c07d41a');
+assert.equal(signature(yara), '000000000000002a-d94b3f4f8fc9df0d');
 const { device: _, signature: __, ...withoutDevice } = yara;
 const { signature: ___, ...plain } = users.generate({ country: 'BR', sex: 'female', seed: 42 });
 assert.deepEqual(withoutDevice, plain);
@@ -58,6 +60,38 @@ assert.equal(device(fiveDevice.device), 'safari 16.5 on iOS 16.5 (Apple iPhone 1
 assert.equal(fiveDevice.device.reserved, true);
 assert.equal(fiveDevice.device.platform, fiveDevice.account.platform);
 
+// The locale, the zone and the currency come from country-generator.
+assert.equal(yara.account.locale, 'pt-BR');
+assert.equal(yara.account.timezone, 'America/Fortaleza');
+assert.equal(yara.account.currency, 'BRL');
+assert.equal(yara.account.currency_digits, 2);
+assert.equal(four.account.currency, 'JPY');
+assert.equal(four.account.currency_digits, 0);
+
+// Papers and a wallet: off by default, and nothing else changes when they are on.
+assert.equal('identity' in one, false);
+assert.equal('finance' in one, false);
+const papers = { documents: ['passport', 'id_card'] };
+const money = { accounts: ['current', 'savings'], cards: ['debit', 'any'], cardNumbers: 'test_number' };
+const held = users.generate({ country: 'BR', sex: 'female', identity: papers, finance: money, seed: 42 });
+assert.equal(held.identity.numbers[0].formatted, '300.274.655-00');
+assert.equal(held.identity.documents[0].number, 'LI206064');
+assert.equal(held.identity.documents[0].mrz[0], 'P<BRACARVALHO<SOUZA<<YARA<<<<<<<<<<<<<<<<<<<');
+assert.equal(held.finance.accounts[0].iban, 'BR0800556603000500011351977C1');
+assert.equal(held.finance.accounts[1].iban, 'BR2910866788042881661649119P1');
+assert.equal(held.finance.cards[0].number, '5066991111111118');
+assert.equal(held.finance.cards[0].network, 'elo');
+assert.equal(signature(held), '000000000000002a-0d5c675a311e548b');
+const { identity: ____, finance: _____, signature: ______, ...withoutParts } = held;
+assert.deepEqual(withoutParts, plain);
+const simple = users.generate({ country: 'FR', safe: true, identity: true, finance: true, seed: 9 });
+assert.equal(simple.identity.numbers[0].reserved, true);
+assert.equal(simple.identity.documents.length, 0);
+assert.equal(simple.finance.accounts.length, 1);
+assert.equal(simple.finance.accounts[0].reserved, true);
+assert.equal(simple.finance.cards.length, 0);
+assert.ok(users.generate({ country: 'BR', finance: { cards: ['debit'], network: 'visa', cardNumbers: 'test_number', holding: 'asked' }, seed: 1 }).finance.cards[0].network === 'visa');
+
 // The hash of 2,000 JSON documents, as the native build computes it.
 let hash = 0xcbf29ce484222325n;
 const mask = (1n << 64n) - 1n;
@@ -65,13 +99,19 @@ const encoder = new TextEncoder();
 for (let s = 0; s < 2000; ++s) {
   for (const byte of encoder.encode(users.generateJson({ seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-assert.equal(hash.toString(16), 'a504047d9e9dbd25');
+assert.equal(hash.toString(16).padStart(16, '0'), 'cace82376f1d6423');
 // And of 500 users with a device.
 hash = 0xcbf29ce484222325n;
 for (let s = 0; s < 500; ++s) {
   for (const byte of encoder.encode(users.generateJson({ device: true, seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-assert.equal(hash.toString(16).padStart(16, '0'), '07779518fb9c3b61');
+assert.equal(hash.toString(16).padStart(16, '0'), 'a7f1ecaaf722cb16');
+// And of 500 users with papers and a wallet.
+hash = 0xcbf29ce484222325n;
+for (let s = 0; s < 500; ++s) {
+  for (const byte of encoder.encode(users.generateJson({ identity: papers, finance: money, seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
+}
+assert.equal(hash.toString(16).padStart(16, '0'), '30102130511643ea');
 
 // A random user replays from its seed.
 const random = users.generate({ country: 'DE', referenceDate: new Date(2026, 9, 15) });
@@ -119,6 +159,17 @@ for (const [request, kind, message] of [
   [{ ages: { min: 20, max: 121 } }, RangeError, /ages.max/],
   [{ safe: 1 }, TypeError, /safe/],
   [{ device: 'yes' }, TypeError, /device must be a boolean/],
+  [{ identity: 'yes' }, TypeError, /identity must be a boolean/],
+  [{ identity: { paper: [] } }, TypeError, /unknown identity field/],
+  [{ identity: { documents: ['licence'] } }, RangeError, /identity.documents must hold/],
+  [{ identity: { documents: 'passport' } }, TypeError, /identity.documents must be an array/],
+  [{ finance: 3 }, TypeError, /finance must be a boolean/],
+  [{ finance: { account: [] } }, TypeError, /unknown finance field/],
+  [{ finance: { accounts: ['pension'] } }, RangeError, /finance.accounts must hold/],
+  [{ finance: { cards: ['gift'] } }, RangeError, /finance.cards must hold/],
+  [{ finance: { cardNumbers: 'real' } }, RangeError, /finance.cardNumbers must be one of/],
+  [{ finance: { holding: 'some' } }, RangeError, /finance.holding must be/],
+  [{ finance: { network: 7 } }, TypeError, /finance.network must be a string/],
   [{ status: 'banned' }, RangeError, /status/],
   [{ status: 1 }, TypeError, /status/],
   [{ traits: 3 }, TypeError, /unknown field "traits"/],
@@ -137,7 +188,7 @@ for (const [request, kind, message] of [
     JSON.stringify(request, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 }
 // A failed call leaves the generator usable.
-assert.equal(signature(users.generate({ seed: 1 })), '0000000000000001-65c68ea7276bee78');
+assert.equal(signature(users.generate({ seed: 1 })), '0000000000000001-a7d7a9a59df5d3a4');
 
 // Batches. User i of a batch is the single call with the seed
 // core::item_seed(batchSeed, i): splitmix64_mix(seed ^ splitmix64_mix(i ^ 0x6a09e667f3bcc909)).
@@ -220,4 +271,4 @@ await assert.rejects(createUserPool({ workers: 0 }), RangeError);
 await assert.rejects(createUserPool({ workers: 1.5 }), TypeError);
 await assert.rejects(createUserPool({ threads: 2 }), TypeError);
 
-console.log('PASS: @dasmig/user matches the native known answers (7 users, 2,000-document and 500-device hashes), replay, requests, devices, errors, batches and worker pools.');
+console.log('PASS: @dasmig/user matches the native known answers (7 users, 2,000-document, 500-device and 500-with-parts hashes), replay, requests, devices, papers, wallets, errors, batches and worker pools.');

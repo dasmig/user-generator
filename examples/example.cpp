@@ -35,6 +35,17 @@ int main()
               << " on " << u.account.platform_label << ", " << u.account.locale << ", "
               << u.account.timezone << ", " << u.account.currency << '\n';
 
+    std::cout << "\nThe same person's papers and wallet, as safe test data:\n";
+    dasmig::user_request held = request;
+    dasmig::finance_request money;
+    money.cards = {dasmig::card_kind::debit};
+    held.identity = dasmig::identity_request{};
+    held.finance = money;
+    const auto full = gen.get_user(held, std::uint64_t{42});
+    for (const auto& number : full.papers->numbers) std::cout << "  " << number.scheme << " " << number.formatted << '\n';
+    for (const auto& account : full.wallet->accounts) std::cout << "  " << account.scheme << " " << account.formatted << '\n';
+    for (const auto& card : full.wallet->cards) std::cout << "  " << card.network << " " << card.formatted << " (" << card.test_source << ")\n";
+
     std::cout << "\nThe same seed gives the same user:\n"
               << "  " << (gen.get_user(request, std::uint64_t{42}).to_json() == u.to_json() ? "equal" : "different")
               << '\n';

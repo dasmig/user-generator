@@ -12,7 +12,10 @@
 
 #include <cmath>
 #include <exception>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace
 {
@@ -33,10 +36,63 @@ std::string hex(std::uint64_t value)
     return out;
 }
 
+// The next part of a comma-separated list; false at its end.
+bool next_part(std::string_view& list, std::string_view& part)
+{
+    if (list.empty()) return false;
+    const auto comma = list.find(',');
+    part = list.substr(0, comma);
+    list = comma == std::string_view::npos ? std::string_view{} : list.substr(comma + 1);
+    return true;
+}
+
+// "passport,id_card": the documents of a person; "" is none.
+std::vector<dasmig::id_document_kind> documents_of(std::string_view list)
+{
+    std::vector<dasmig::id_document_kind> out;
+    for (std::string_view part; next_part(list, part);)
+    {
+        if (part == "passport") out.push_back(dasmig::id_document_kind::passport);
+        else if (part == "id_card") out.push_back(dasmig::id_document_kind::id_card);
+        else throw std::invalid_argument("a document must be \"passport\" or \"id_card\"");
+    }
+    return out;
+}
+
+// "current,savings": the accounts of a person; "" is none.
+std::vector<dasmig::account_kind> accounts_of(std::string_view list)
+{
+    std::vector<dasmig::account_kind> out;
+    for (std::string_view part; next_part(list, part);)
+    {
+        if (part == "current") out.push_back(dasmig::account_kind::current);
+        else if (part == "savings") out.push_back(dasmig::account_kind::savings);
+        else throw std::invalid_argument("an account must be \"current\" or \"savings\"");
+    }
+    return out;
+}
+
+// "debit,any": the cards of a person, "any" drawing the kind; "" is none.
+std::vector<std::optional<dasmig::card_kind>> cards_of(std::string_view list)
+{
+    std::vector<std::optional<dasmig::card_kind>> out;
+    for (std::string_view part; next_part(list, part);)
+    {
+        if (part == "debit") out.emplace_back(dasmig::card_kind::debit);
+        else if (part == "credit") out.emplace_back(dasmig::card_kind::credit);
+        else if (part == "prepaid") out.emplace_back(dasmig::card_kind::prepaid);
+        else if (part == "any") out.emplace_back(std::nullopt);
+        else throw std::invalid_argument("a card must be \"debit\", \"credit\", \"prepaid\" or \"any\"");
+    }
+    return out;
+}
+
 // The request the C API's string and number arguments describe; "" and -1
 // leave a choice to the generator.
 dasmig::user_request make_request(const char* country, const char* sex, int age_min, int age_max,
-                                  const char* reference_date, int safe, const char* status, int device)
+                                  const char* reference_date, int safe, const char* status, int device, int identity,
+                                  const char* documents, int finance, const char* accounts, const char* cards,
+                                  const char* card_numbers, const char* network, int surveyed)
 {
     dasmig::user_request request;
     if (*country != '\0') request.country = country;
@@ -55,6 +111,24 @@ dasmig::user_request make_request(const char* country, const char* sex, int age_
     request.safe = safe != 0;
     if (*status != '\0') request.status = status;
     request.device = device != 0;
+    if (identity != 0)
+    {
+        request.identity.emplace();
+        request.identity->documents = documents_of(documents);
+    }
+    if (finance != 0)
+    {
+        request.finance.emplace();
+        request.finance->accounts = accounts_of(accounts);
+        request.finance->cards = cards_of(cards);
+        const std::string_view source{card_numbers};
+        if (source == "network_range") request.finance->card_numbers = dasmig::card_source::network_range;
+        else if (source == "test_number") request.finance->card_numbers = dasmig::card_source::test_number;
+        else if (source == "wrong_check") request.finance->card_numbers = dasmig::card_source::wrong_check;
+        else if (!source.empty()) throw std::invalid_argument("card numbers must be \"network_range\", \"test_number\" or \"wrong_check\"");
+        if (*network != '\0') request.finance->network = network;
+        if (surveyed != 0) request.finance->holding = dasmig::ownership::surveyed;
+    }
     return request;
 }
 
@@ -78,15 +152,30 @@ extern "C"
 ///        `suspended`), or "" to draw one.
 /// @param device Non-zero to add the device of the last sign-in
 ///        (user_request::device), under `device`.
+/// @param identity Non-zero to add the national numbers and documents
+///        (user_request::identity), under `identity`.
+/// @param documents The documents, "passport,id_card"; "" for numbers only.
+/// @param finance Non-zero to add the accounts and cards
+///        (user_request::finance), under `finance`.
+/// @param accounts The accounts, "current,savings"; "" for none.
+/// @param cards The cards, "debit,credit,prepaid,any"; "" for none.
+/// @param card_numbers "network_range", "test_number", "wrong_check", or "" for
+///        the library's default.
+/// @param network A card network ("visa"), or "" to draw it.
+/// @param surveyed Non-zero for Global Findex to decide who holds what.
 /// @param seed 1 to 16 hexadecimal digits, or "" for a random seed (the
 ///        user's signature has the seed that replays it).
 EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate(const char* country, const char* sex, int age_min,
                                                       int age_max, const char* reference_date, int safe,
-                                                      const char* status, int device, const char* seed)
+                                                      const char* status, int device, int identity,
+                                                      const char* documents, int finance, const char* accounts,
+                                                      const char* cards, const char* card_numbers,
+                                                      const char* network, int surveyed, const char* seed)
 {
     try
     {
-        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status, device);
+        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status, device, identity,
+                                          documents, finance, accounts, cards, card_numbers, network, surveyed);
 
         auto& generator = dasmig::usg::instance();
         return reply(*seed == '\0' ? generator.get_user(request).to_json()
@@ -107,12 +196,16 @@ EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate(const char* country, const
 /// @param count Number of users (0 or more).
 EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate_batch(const char* country, const char* sex, int age_min,
                                                             int age_max, const char* reference_date, int safe,
-                                                            const char* status, int device, const char* seed,
+                                                            const char* status, int device, int identity,
+                                                            const char* documents, int finance, const char* accounts,
+                                                            const char* cards, const char* card_numbers,
+                                                            const char* network, int surveyed, const char* seed,
                                                             double first, int count)
 {
     try
     {
-        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status, device);
+        const auto request = make_request(country, sex, age_min, age_max, reference_date, safe, status, device, identity,
+                                          documents, finance, accounts, cards, card_numbers, network, surveyed);
         if (*seed == '\0') throw std::invalid_argument("a batch needs a seed");
         if (count < 0) throw std::invalid_argument("count must not be negative");
         if (!(first >= 0.0 && first <= 9007199254740991.0) || first != std::floor(first))
@@ -134,8 +227,10 @@ EMSCRIPTEN_KEEPALIVE const char* dasmig_user_generate_batch(const char* country,
 
 /// @brief What this module can generate: the supported countries, the hash
 ///        of the eight libraries' data (`data`, the signature of a user
-///        without a device) and device-generator's (`device_data`, combined
-///        into the signature of a user with one).
+///        without a device, papers or a wallet), and device-generator's
+///        (`device_data`), id-generator's (`identity_data`) and
+///        finance-generator's (`finance_data`), combined in that order into the
+///        signature of a user with those parts.
 EMSCRIPTEN_KEEPALIVE const char* dasmig_user_info()
 {
     try
@@ -146,6 +241,8 @@ EMSCRIPTEN_KEEPALIVE const char* dasmig_user_info()
         w.end_array()
             .field("data", hex(dasmig::usg::instance().data_hash()))
             .field("device_data", hex(dasmig::dvg::instance().data_hash()))
+            .field("identity_data", hex(dasmig::idg::instance().data_hash()))
+            .field("finance_data", hex(dasmig::fng::instance().data_hash()))
             .end_object();
         return reply(w.str());
     }

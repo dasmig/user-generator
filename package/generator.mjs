@@ -4,7 +4,12 @@
 import { versions } from './versions.mjs';
 import { batchPlan, integer, malformed, outOfRange, seedText } from './batch.mjs';
 
-const keys = new Set(['country', 'sex', 'ages', 'referenceDate', 'safe', 'status', 'device', 'seed']);
+const keys = new Set(['country', 'sex', 'ages', 'referenceDate', 'safe', 'status', 'device', 'identity', 'finance', 'seed']);
+const documentKinds = new Set(['passport', 'id_card']);
+const accountKinds = new Set(['current', 'savings']);
+const cardKinds = new Set(['debit', 'credit', 'prepaid', 'any']);
+const cardSources = new Set(['network_range', 'test_number', 'wrong_check']);
+const holdings = new Set(['asked', 'surveyed']);
 const sexes = new Set(['male', 'female']);
 const statuses = new Set(['active', 'inactive', 'unverified', 'suspended']);
 
@@ -28,6 +33,44 @@ function dateText(date) {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
+function listOf(value, name, allowed) {
+  if (!Array.isArray(value)) malformed(`${name} must be an array`);
+  for (const item of value)
+    if (!allowed.has(item))
+      (typeof item === 'string' ? outOfRange : malformed)(`${name} must hold ${[...allowed].join(', ')}, not ${JSON.stringify(item)}`);
+  return value.join(',');
+}
+
+// The identity option as the module's arguments: on, then the documents.
+function identityArgs(identity) {
+  if (identity === undefined || identity === false) return [0, ''];
+  if (identity === true) return [1, ''];
+  if (identity === null || typeof identity !== 'object' || Array.isArray(identity)) malformed('identity must be a boolean or { documents }');
+  for (const key of Object.keys(identity))
+    if (key !== 'documents') malformed(`unknown identity field "${key}"; the field is documents`);
+  return [1, identity.documents === undefined ? '' : listOf(identity.documents, 'identity.documents', documentKinds)];
+}
+
+// The finance option as the module's arguments: on, the accounts, the cards,
+// the source of card numbers, the network and whether a survey decides.
+function financeArgs(finance) {
+  if (finance === undefined || finance === false) return [0, '', '', '', '', 0];
+  if (finance === true) return [1, 'current', '', '', '', 0];
+  if (finance === null || typeof finance !== 'object' || Array.isArray(finance))
+    malformed('finance must be a boolean or { accounts, cards, cardNumbers, network, holding }');
+  const fields = new Set(['accounts', 'cards', 'cardNumbers', 'network', 'holding']);
+  for (const key of Object.keys(finance))
+    if (!fields.has(key)) malformed(`unknown finance field "${key}"; the fields are ${[...fields].join(', ')}`);
+  const { accounts, cards, cardNumbers, network, holding } = finance;
+  if (cardNumbers !== undefined && !cardSources.has(cardNumbers))
+    (typeof cardNumbers === 'string' ? outOfRange : malformed)(`finance.cardNumbers must be one of ${[...cardSources].join(', ')}, not ${JSON.stringify(cardNumbers)}`);
+  if (network !== undefined && typeof network !== 'string') malformed('finance.network must be a string');
+  if (holding !== undefined && !holdings.has(holding))
+    (typeof holding === 'string' ? outOfRange : malformed)(`finance.holding must be "asked" or "surveyed", not ${JSON.stringify(holding)}`);
+  return [1, accounts === undefined ? 'current' : listOf(accounts, 'finance.accounts', accountKinds),
+    cards === undefined ? '' : listOf(cards, 'finance.cards', cardKinds), cardNumbers ?? '', network ?? '', holding === 'surveyed' ? 1 : 0];
+}
+
 function parse(json) {
   const result = JSON.parse(json);
   if (result.error) throw new Error(result.error);
@@ -42,9 +85,11 @@ function parse(json) {
 export async function createGenerator(createModule, moduleOptions) {
   const module = await createModule(moduleOptions);
   const generate = module.cwrap('dasmig_user_generate', 'string',
-    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'number', 'string']);
+    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'number',
+      'number', 'string', 'number', 'string', 'string', 'string', 'string', 'number', 'string']);
   const generateBatchRaw = module.cwrap('dasmig_user_generate_batch', 'string',
-    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'number', 'string', 'number', 'number']);
+    ['string', 'string', 'number', 'number', 'string', 'number', 'string', 'number',
+      'number', 'string', 'number', 'string', 'string', 'string', 'string', 'number', 'string', 'number', 'number']);
   const requestKeys = new Set([...keys].filter(key => key !== 'seed'));
   const info = parse(module.cwrap('dasmig_user_info', 'string', [])());
   const countries = Object.freeze([...info.countries]);
@@ -55,7 +100,7 @@ export async function createGenerator(createModule, moduleOptions) {
     if (request === null || typeof request !== 'object' || Array.isArray(request)) malformed('must be an object');
     for (const key of Object.keys(request))
       if (!allowed.has(key)) malformed(`unknown field "${key}"; the fields are ${[...allowed].join(', ')}`);
-    const { country, sex, ages, referenceDate, safe, status, device } = request;
+    const { country, sex, ages, referenceDate, safe, status, device, identity, finance } = request;
 
     let code = '';
     if (country !== undefined) {
@@ -79,7 +124,8 @@ export async function createGenerator(createModule, moduleOptions) {
       if (typeof status !== 'string') malformed('status must be a string');
       if (!statuses.has(status)) outOfRange(`status must be one of ${[...statuses].join(', ')}, not "${status}"`);
     }
-    return [code, sex ?? '', min, max, dateText(referenceDate), safe ? 1 : 0, status ?? '', device ? 1 : 0];
+    return [code, sex ?? '', min, max, dateText(referenceDate), safe ? 1 : 0, status ?? '', device ? 1 : 0,
+      ...identityArgs(identity), ...financeArgs(finance)];
   }
 
   function generateJson(request = {}) {
@@ -97,6 +143,8 @@ export async function createGenerator(createModule, moduleOptions) {
     countries,
     dataHash: info.data,
     deviceDataHash: info.device_data,
+    identityDataHash: info.identity_data,
+    financeDataHash: info.finance_data,
     versions,
     generateJson(request) {
       const json = generateJson(request);

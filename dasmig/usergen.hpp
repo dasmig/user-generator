@@ -29,6 +29,8 @@
 #include <dasmig/countrygen.hpp>
 #include <dasmig/devicegen.hpp>
 #include <dasmig/emailgen.hpp>
+#include <dasmig/fingen.hpp>
+#include <dasmig/idgen.hpp>
 #include <dasmig/namegen.hpp>
 #include <dasmig/nicknamegen.hpp>
 #include <dasmig/phonegen.hpp>
@@ -42,7 +44,7 @@
 /// @author Diego Dasso Migotto (diegomigotto at hotmail dot com)
 /// @see See doc/usage.md for the narrative tutorial.
 
-DASMIG_CORE_REQUIRE(1, 2);
+DASMIG_CORE_REQUIRE(1, 4);
 
 namespace dasmig
 {
@@ -130,6 +132,28 @@ struct user_request
     ///        nothing else in a user, except that a drawn country is one
     ///        device-generator has too.
     bool device{false};
+
+    /// @brief Add the person's national numbers and documents (user::papers),
+    ///        from id-generator. Unset by default.
+    ///
+    /// Its `country`, `birth_date`, `sex`, `given_names`, `surname`,
+    /// `second_surname`, `residence`, `reference_date` and `safe` are replaced
+    /// by the user's, so a number encodes this person; the rest (`schemes`,
+    /// `documents`, `birthplace`, `weighted`) is used as given. A birthplace left
+    /// unset is the address's place. Drawn from its own seed, so turning it on
+    /// changes nothing else in a user, except that a drawn country is one
+    /// id-generator has too.
+    std::optional<identity_request> identity{}; // NOLINT(readability-redundant-member-init)
+
+    /// @brief Add the person's bank accounts and payment cards (user::wallet),
+    ///        from finance-generator. Unset by default.
+    ///
+    /// Its `country`, `birth_date`, `given_names`, `surname`, `reference_date`
+    /// and `safe` are replaced by the user's; the rest (`accounts`, `cards`,
+    /// `card_numbers`, `network`, `holding`, `weighted`) is used as given. Drawn
+    /// from its own seed, so turning it on changes nothing else in a user, except
+    /// that a drawn country is one finance-generator has too.
+    std::optional<finance_request> finance{}; // NOLINT(readability-redundant-member-init)
 };
 
 /// @brief The online side of a user: the login, the dates, the device and the
@@ -147,8 +171,9 @@ struct user_account
     std::string device;         ///< `phone`, `desktop`, `tablet` or `other`.
     std::string os;             ///< Operating system name.
     std::string locale;         ///< BCP 47 tag (`pt-BR`).
-    std::string timezone;       ///< IANA name (`America/Sao_Paulo`), or a UTC offset (`UTC+03:00`) where no zone is listed.
-    std::string currency;       ///< ISO 4217 code of the country (`BRL`); empty where country-generator has none.
+    std::string timezone;       ///< IANA name (`America/Sao_Paulo`).
+    std::string currency;       ///< ISO 4217 code of the locale's currency (`BRL`).
+    std::uint8_t currency_digits{2}; ///< Its minor-unit digits (2 for `BRL`, 0 for `JPY`), as core::money takes them.
 };
 
 /// @brief Return type for user generation.
@@ -170,6 +195,8 @@ class user
     dasmig::email mail;        ///< An email address, in the person's name.
     user_account account;      ///< The login, dates, device and regional settings.
     std::optional<dasmig::device> client; ///< The device of the last sign-in; only with user_request::device.
+    std::optional<dasmig::identity> papers; ///< National numbers and documents; only with user_request::identity.
+    std::optional<dasmig::finance> wallet;  ///< Bank accounts and payment cards; only with user_request::finance.
 
     /// @brief Retrieve the random seed used to generate this user.
     /// @return The call seed; pass it to get_user(request, seed) with
@@ -178,8 +205,9 @@ class user
 
     /// @brief The seed and the data this user was generated from.
     /// @return The replay signature; `data` combines the data hashes of the
-    ///         libraries and this one's (and device-generator's, for a user
-    ///         with a device).
+    ///         libraries and this one's, and those of device-generator,
+    ///         id-generator and finance-generator for a user with those parts,
+    ///         in that order.
     [[nodiscard]] const core::seed_signature& signature() const
     {
         return _signature;
@@ -207,7 +235,8 @@ class user
     /// `age`, `country`, `account` and `signature`. `account` has `last_login`
     /// as `null` for an account that never logged in. With
     /// user_request::device, `device` follows `account`, as device-generator
-    /// writes it; without, the key is left out.
+    /// writes it, then `identity` and `finance`, as those libraries write them,
+    /// with theirs; a part not asked for leaves its key out.
     /// @param w Writer positioned where a value is allowed.
     void to_json(core::json_writer& w) const
     {
@@ -241,11 +270,22 @@ class user
             .field("locale", account.locale)
             .field("timezone", account.timezone)
             .field("currency", account.currency)
+            .field("currency_digits", static_cast<unsigned>(account.currency_digits))
             .end_object();
         if (client)
         {
             w.key("device");
             client->to_json(w);
+        }
+        if (papers)
+        {
+            w.key("identity");
+            papers->to_json(w);
+        }
+        if (wallet)
+        {
+            w.key("finance");
+            wallet->to_json(w);
         }
         w.key("signature");
         _signature.to_json(w);
@@ -289,9 +329,6 @@ enum class user_table : std::uint8_t
     platforms,       ///< `platforms.tsv`: the devices and their global shares.
     platform_shares, ///< `platform_shares.tsv`: per-country shares, in percent, that replace the global weights.
     statuses,        ///< `statuses.tsv`: the account statuses, their shares and how they log in.
-    languages,       ///< `languages.tsv`: language names to codes, for countries without a locale row.
-    locales,         ///< `locales.tsv`: the locale tags of each country.
-    timezones,       ///< `timezones.tsv`: the time zones of each country.
     password_words,  ///< `password_words.tsv`: the words and whole passwords of the `human` password style.
     password_patterns ///< `password_patterns.tsv`: how the `human` style puts a password together.
 };
@@ -305,18 +342,19 @@ enum class user_table : std::uint8_t
 /// every part, so they agree. Each part gets its own call seed, split from the
 /// user's seed by name (`"country"`, `"birth"`, `"name"`, `"username"`,
 /// `"email"`, `"phone"`, `"address"`, `"password"`, `"dates"`, `"status"`,
-/// `"platform"`, `"locale"`, `"timezone"`, `"device"`), so the user's seed replays all of
+/// `"platform"`, `"locale"`, `"timezone"`, `"device"`, `"identity"`, `"finance"`), so the user's seed replays all of
 /// it, and forcing one choice (a country, a status) does not shift the draws
 /// of the others. Output is identical on every compiler and platform
 /// (dasmig-core).
 ///
 /// The generator composes the light libraries directly and does not use
 /// persona-generator: a user carries no body, traits, interests, job or city.
-/// It holds the data of the account only (platforms, statuses, locales and
-/// time zones); the rest comes from the instances of the seven libraries it
-/// was built on (the singletons by default), so their data, their layers and
-/// their `lite` or `full` tiers are the user's. A device, when a request asks
-/// for one, comes the same way from device-generator.
+/// It holds the data of the account only (platforms, statuses and the words of
+/// human passwords); the rest comes from the instances of the seven libraries
+/// it was built on (the singletons by default), so their data, their layers and
+/// their `lite` or `full` tiers are the user's. A device, a person's papers and
+/// their wallet, when a request asks for them, come the same way from
+/// device-generator, id-generator and finance-generator.
 ///
 /// @par Thread safety
 /// get_user(request, seed) is const and only calls const members of the
@@ -329,7 +367,7 @@ class usg
     /// @brief The library instances a user is drawn from.
     struct sources
     {
-        cntg* country{&cntg::instance()};     ///< Countries: names, currency, languages and time zones.
+        cntg* country{&cntg::instance()};     ///< Countries: names, locales, currencies and time zones.
         bthg* birth{&bthg::instance()};       ///< Birth dates and ages.
         ng* name{&ng::instance()};            ///< Names.
         nng* nickname{&nng::instance()};      ///< Usernames.
@@ -337,6 +375,8 @@ class usg
         phg* phone{&phg::instance()};         ///< Phone numbers.
         emg* email{&emg::instance()};         ///< Email addresses.
         dvg* device{nullptr}; ///< Devices, for user_request::device; null uses dvg::instance(), loaded when a user first asks for a device.
+        idg* identity{nullptr}; ///< Numbers and documents, for user_request::identity; null uses idg::instance(), loaded when a user first asks.
+        fng* finance{nullptr};  ///< Accounts and cards, for user_request::finance; null uses fng::instance(), loaded when a user first asks.
     };
 
     /// @brief Default constructor — creates a generator with no account data,
@@ -406,11 +446,15 @@ class usg
         auto draws = call.split("country");
         std::string last = "user-generator: no country has data in every library";
         const auto device_countries = request.device ? device_source_().countries() : std::vector<std::string>{};
+        const auto identity_countries = request.identity ? identity_source_().countries() : std::vector<std::string>{};
+        const auto finance_countries = request.finance ? finance_source_().countries() : std::vector<std::string>{};
         for (int i = 0; i < max_country_attempts_; ++i)
         {
             const auto c = _from.country->get_country({}, draws());
             if (!in_contact_libraries_(c.cca2)) continue;
             if (request.device && !std::ranges::binary_search(device_countries, c.cca2)) continue;
+            if (request.identity && std::ranges::find(identity_countries, c.cca2) == identity_countries.end()) continue;
+            if (request.finance && std::ranges::find(finance_countries, c.cca2) == finance_countries.end()) continue;
             try
             {
                 return build_(request, c.cca2, call, call_seed);
@@ -528,7 +572,8 @@ class usg
     /// @return True when this generator can generate.
     [[nodiscard]] bool has_data() const
     {
-        return has_account_data_() && _from.country->has_data() && _from.birth->has_data() &&
+        return has_account_data_() && _from.country->has_data() && _from.country->has_locale_data() &&
+               _from.birth->has_data() &&
                _from.name->has_resources() && _from.address->has_data() && _from.phone->has_data() &&
                _from.email->has_data();
     }
@@ -614,8 +659,8 @@ class usg
             }
         }
         throw std::invalid_argument("extend: expected one of the user tables (platforms.tsv, "
-                                    "platform_shares.tsv, statuses.tsv, languages.tsv, locales.tsv, "
-                                    "timezones.tsv, password_words.tsv, password_patterns.tsv), got " +
+                                    "platform_shares.tsv, statuses.tsv, password_words.tsv, "
+                                    "password_patterns.tsv), got " +
                                     path.filename().string());
     }
 
@@ -662,8 +707,9 @@ class usg
     }
 
     /// @brief Hash of the loaded data: this generator's tables and the data of
-    ///        the seven libraries. Recorded in each result's signature(); a
-    ///        user with a device combines it with device-generator's.
+    ///        the seven libraries, country-generator's locale tables among them.
+    ///        Recorded in each result's signature(); a user with a device, papers
+    ///        or a wallet combines it with those libraries'.
     /// @return A hash that changes when any of them does; 0 when this
     ///         generator's tables are empty.
     [[nodiscard]] std::uint64_t data_hash() const
@@ -677,7 +723,8 @@ class usg
         }
         if (!any) return 0;
         std::uint64_t h = own;
-        for (const auto part : {_from.country->data_hash(), _from.birth->data_hash(), _from.name->data_hash(),
+        for (const auto part : {_from.country->data_hash(), _from.country->locale_data_hash(),
+                                _from.birth->data_hash(), _from.name->data_hash(),
                                 _from.nickname->data_hash(), _from.address->data_hash(),
                                 _from.phone->data_hash(), _from.email->data_hash()})
         {
@@ -692,10 +739,9 @@ class usg
     // -- Tables -------------------------------------------------------------
 
     static constexpr std::string_view library_name_ = "user-generator";
-    static constexpr std::size_t table_count_ = 8;
+    static constexpr std::size_t table_count_ = 5;
     static constexpr std::array<table, table_count_> all_tables_{
-        table::platforms, table::platform_shares, table::statuses,       table::languages,
-        table::locales,   table::timezones,       table::password_words, table::password_patterns};
+        table::platforms, table::platform_shares, table::statuses, table::password_words, table::password_patterns};
 
     using documents = std::array<std::optional<core::tsv_document>, table_count_>;
     using tables = std::array<core::layered_table, table_count_>;
@@ -709,9 +755,6 @@ class usg
         case table::platforms: return "platforms.tsv";
         case table::platform_shares: return "platform_shares.tsv";
         case table::statuses: return "statuses.tsv";
-        case table::languages: return "languages.tsv";
-        case table::locales: return "locales.tsv";
-        case table::timezones: return "timezones.tsv";
         case table::password_words: return "password_words.tsv";
         case table::password_patterns: return "password_patterns.tsv";
         }
@@ -727,9 +770,6 @@ class usg
         case table::platform_shares:
             return {.key = {"country", "key"}, .required = {"weight"}, .optional = {}};
         case table::statuses: return {.key = {"key"}, .required = {"label", "login", "weight"}, .optional = {}};
-        case table::languages: return {.key = {"language"}, .required = {"code"}, .optional = {}};
-        case table::locales: return {.key = {"country", "locale"}, .required = {"weight"}, .optional = {}};
-        case table::timezones: return {.key = {"country", "timezone"}, .required = {"weight"}, .optional = {}};
         case table::password_words: return {.key = {"word", "kind"}, .required = {"weight"}, .optional = {}};
         case table::password_patterns: return {.key = {"pattern"}, .required = {"weight"}, .optional = {}};
         }
@@ -740,8 +780,7 @@ class usg
     {
         return {core::layered_table{schema_(table::platforms)},
                 core::layered_table{schema_(table::platform_shares)},
-                core::layered_table{schema_(table::statuses)}, core::layered_table{schema_(table::languages)},
-                core::layered_table{schema_(table::locales)}, core::layered_table{schema_(table::timezones)},
+                core::layered_table{schema_(table::statuses)},
                 core::layered_table{schema_(table::password_words)},
                 core::layered_table{schema_(table::password_patterns)}};
     }
@@ -768,11 +807,6 @@ class usg
         double weight{0.0};
     };
 
-    struct weighted_text
-    {
-        std::string text;
-        double weight{0.0};
-    };
 
     /// The words and patterns of the `human` password style.
     struct password_model
@@ -792,9 +826,6 @@ class usg
         std::map<std::string, std::vector<std::pair<std::string, double>>, std::less<>> shares; // country -> key, weight
         std::vector<status_row> statuses;
         std::optional<core::discrete> status_pick; // over statuses
-        std::map<std::string, std::string, std::less<>> languages;
-        std::map<std::string, std::vector<weighted_text>, std::less<>> locales;
-        std::map<std::string, std::vector<weighted_text>, std::less<>> timezones;
     };
 
     static double weight_(const core::tsv_row& row)
@@ -879,14 +910,6 @@ class usg
             (void)login_(row);
             (void)weight_(row);
             break;
-        case table::languages:
-            if (row.get<std::string>("code").empty()) throw row.error("code", "must not be empty");
-            break;
-        case table::locales:
-        case table::timezones:
-            (void)country_(row);
-            (void)weight_(row);
-            break;
         }
     }
 
@@ -911,18 +934,6 @@ class usg
             status_weights.push_back(m.statuses.back().weight);
         }
         if (!status_weights.empty()) m.status_pick.emplace(status_weights);
-        for (const auto& row : tbl.at(index_(table::languages)).rows())
-        {
-            m.languages[row.get<std::string>("language")] = row.get<std::string>("code");
-        }
-        for (const auto& row : tbl.at(index_(table::locales)).rows())
-        {
-            m.locales[country_(row)].push_back({.text = row.get<std::string>("locale"), .weight = weight_(row)});
-        }
-        for (const auto& row : tbl.at(index_(table::timezones)).rows())
-        {
-            m.timezones[country_(row)].push_back({.text = row.get<std::string>("timezone"), .weight = weight_(row)});
-        }
 
         auto& pw = m.passwords;
         std::vector<double> word_weights;
@@ -1156,10 +1167,14 @@ class usg
         const auto& status = pick_status_(request, u, call);
         const auto seen = place_login_(line, status.login, u);
         pick_platform_(u, call);
-        u.account.locale = locale_(country, call);
-        u.account.timezone = timezone_(country, call);
-        u.account.currency = country.currency_code;
+        const auto locale = _from.country->get_locale({.country = cca2}, call.split("locale")());
+        u.account.locale = locale.tag;
+        u.account.currency = locale.currency_code;
+        u.account.currency_digits = locale.currency_digits;
+        u.account.timezone = _from.country->get_time_zone({.country = cca2}, call.split("timezone")()).name;
         if (request.device) add_device_(request, seen, u, call);
+        if (request.identity) add_identity_(*request.identity, request, n, u, call);
+        if (request.finance) add_finance_(*request.finance, request, n, u, call);
         return u;
     }
 
@@ -1534,7 +1549,7 @@ class usg
         return created;
     }
 
-    // -- Platform, locale, time zone -------------------------------------------------
+    // -- Platform -------------------------------------------------------------------
 
     // The platforms of a country: the shares it overrides, in percent, and the
     // rest of the 100 split among the others in proportion to their global weights.
@@ -1573,26 +1588,6 @@ class usg
         u.account.os = p.os;
     }
 
-    static const weighted_text& pick_text_(const std::vector<weighted_text>& rows, core::rng& r)
-    {
-        std::vector<double> weights;
-        weights.reserve(rows.size());
-        for (const auto& row : rows) weights.push_back(row.weight);
-        return rows[core::discrete{weights}(r)];
-    }
-
-    [[nodiscard]] std::string locale_(const dasmig::country& country, const core::rng& call) const
-    {
-        auto r = call.split("locale");
-        const auto it = _model.locales.find(country.cca2);
-        if (it != _model.locales.end() && !it->second.empty()) return pick_text_(it->second, r).text;
-        // The country's first language, written <language>-<country>.
-        const auto end = country.languages.find(';');
-        const auto first = country.languages.substr(0, end);
-        const auto lang = _model.languages.find(first);
-        return (lang == _model.languages.end() ? std::string{"und"} : lang->second) + "-" + country.cca2;
-    }
-
     // -- Device ---------------------------------------------------------------------
 
     [[nodiscard]] const dvg& device_source_() const
@@ -1617,13 +1612,79 @@ class usg
         u._signature.data = core::hash_combine(u._signature.data, source.data_hash());
     }
 
-    [[nodiscard]] std::string timezone_(const dasmig::country& country, const core::rng& call) const
+    // -- Identity and finance -------------------------------------------------------
+
+    [[nodiscard]] const idg& identity_source_() const
     {
-        auto r = call.split("timezone");
-        const auto it = _model.timezones.find(country.cca2);
-        if (it != _model.timezones.end() && !it->second.empty()) return pick_text_(it->second, r).text;
-        const auto first = country.timezones.substr(0, country.timezones.find(';'));
-        return first.empty() ? std::string{"UTC"} : first;
+        return _from.identity != nullptr ? *_from.identity : idg::instance();
+    }
+
+    [[nodiscard]] const fng& finance_source_() const
+    {
+        return _from.finance != nullptr ? *_from.finance : fng::instance();
+    }
+
+    // The parts of a name with the role, joined as written.
+    static std::string part_of_(const name& n, name_role role)
+    {
+        std::string out;
+        for (std::size_t i = 0; i < n.parts().size(); ++i)
+        {
+            if (n.roles()[i] != role) continue;
+            if (!out.empty()) out.push_back(' ');
+            out += core::to_utf8(n.parts()[i]);
+        }
+        return out;
+    }
+
+    static std::optional<std::string> given_(std::string text)
+    {
+        if (text.empty()) return std::nullopt;
+        return text;
+    }
+
+    // The name in a document's surname field: the family name, or the
+    // patronymic where the culture has no family name (Iceland).
+    static std::string document_surname_(const name& n, const std::string& family)
+    {
+        return family.empty() ? core::to_utf8(n.patronymic()) : family;
+    }
+
+    static std::chrono::year_month_day birth_date_(const user& u)
+    {
+        return std::chrono::year{u.birthday.year} / std::chrono::month{u.birthday.month} /
+               std::chrono::day{u.birthday.day};
+    }
+
+    void add_identity_(identity_request ir, const user_request& request, const name& n, user& u, const core::rng& call) const
+    {
+        const auto& source = identity_source_();
+        ir.country = u.country_code;
+        ir.birth_date = birth_date_(u);
+        ir.sex = u.birthday.bio_sex;
+        ir.given_names = given_(u.given);
+        ir.surname = given_(document_surname_(n, part_of_(n, name_role::family)));
+        ir.second_surname = given_(part_of_(n, name_role::family2));
+        ir.residence = id_place{.country_code = u.country_code,
+                                .admin1_code = u.location.admin1_code,
+                                .geonameid = u.location.geonameid != 0 ? std::optional{u.location.geonameid} : std::nullopt};
+        ir.reference_date = request.reference_date;
+        ir.safe = request.safe;
+        u.papers = source.get_identity(ir, call.split("identity")());
+        u._signature.data = core::hash_combine(u._signature.data, source.data_hash());
+    }
+
+    void add_finance_(finance_request fr, const user_request& request, const name& n, user& u, const core::rng& call) const
+    {
+        const auto& source = finance_source_();
+        fr.country = u.country_code;
+        fr.birth_date = birth_date_(u);
+        fr.given_names = given_(u.given);
+        fr.surname = given_(document_surname_(n, u.family));
+        fr.reference_date = request.reference_date;
+        fr.safe = request.safe;
+        u.wallet = source.get_finance(fr, call.split("finance")());
+        u._signature.data = core::hash_combine(u._signature.data, source.data_hash());
     }
 };
 

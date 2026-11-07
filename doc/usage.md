@@ -15,6 +15,8 @@ This guide covers every feature of the user-generator library. For a quick overv
 <li><a href="#passwords">Passwords</a></li>
 <li><a href="#dates-and-status">Dates and Status</a></li>
 <li><a href="#safe-users">Safe Users</a></li>
+<li><a href="#the-device">The Device</a></li>
+<li><a href="#papers-and-wallet">Papers and Wallet</a></li>
 <li><a href="#seeding-and-deterministic-generation">Seeding and Deterministic Generation</a></li>
 <li><a href="#extending-data">Extending Data</a></li>
 <li><a href="#replay-and-json">Replay and JSON</a></li>
@@ -124,6 +126,8 @@ u.mobile;       // dasmig::phone: u.mobile.e164(), .international(), .national()
 u.mail;         // dasmig::email: u.mail.address(), .local, .domain
 u.account;      // user_account, below
 u.client;       // std::optional<dasmig::device>: the device of the last sign-in, with request.device
+u.papers;       // std::optional<dasmig::identity>: national numbers and documents, with request.identity
+u.wallet;       // std::optional<dasmig::finance>: bank accounts and payment cards, with request.finance
 ```
 
 The fields of `u.account`:
@@ -136,9 +140,10 @@ The fields of `u.account`:
 | `last_login` | ISO 8601 UTC; empty if the account never logged in |
 | `status`, `status_label` | `active`, `inactive`, `unverified` or `suspended` in the shipped data |
 | `platform`, `platform_label`, `device`, `os` | for example `ios-phone`, `iPhone`, `phone`, `iOS` |
-| `locale` | BCP 47 (`pt-BR`) |
-| `timezone` | IANA name (`America/Sao_Paulo`), or a UTC offset (`UTC+03:00`) where no zone is listed |
-| `currency` | ISO 4217 code of the country (`BRL`) |
+| `locale` | BCP 47 (`pt-BR`), drawn by speakers from country-generator's `get_locale` |
+| `timezone` | IANA name (`America/Sao_Paulo`), drawn by population from country-generator's `get_time_zone` |
+| `currency` | ISO 4217 code of the locale's currency (`BRL`) |
+| `currency_digits` | its minor-unit digits (2 for `BRL`, 0 for `JPY`), for `dasmig::core::money` |
 
 Each part follows the country: the name's culture, the address's layout, the phone's numbering plan, the email's provider mix and style, the locale, the time zone and the currency. The username and the email are built from the name and the birth year, so they resemble each other.
 
@@ -217,12 +222,45 @@ The device is device-generator's `get_device` for the user's country, the accoun
 
 The device is off by default, so users without it, their JSON and their signatures are those of releases before it. device-generator's header must be on the include path either way (`usergen.hpp` includes it); its data is loaded only by the first user with a device.
 
+## Papers and Wallet
+
+`request.identity` and `request.finance` take the requests of [id-generator](https://github.com/dasmig/id-generator) and [finance-generator](https://github.com/dasmig/finance-generator). What the user knows replaces the same fields; the rest is used as given.
+
+```cpp
+dasmig::identity_request papers;
+papers.documents = {dasmig::id_document_kind::passport};
+
+dasmig::finance_request money;
+money.cards = {dasmig::card_kind::debit};
+money.card_numbers = dasmig::card_source::test_number;
+
+auto u = gen.get_user({.country = "BR", .person_sex = dasmig::sex::female, .identity = papers, .finance = money}, 42);
+u.papers->numbers[0].formatted;   // 300.274.655-00
+u.papers->documents[0].mrz[0];    // P<BRACARVALHO<SOUZA<<YARA<<<<<<<<<<<<<<<<<<<
+u.wallet->accounts[0].iban;       // BR0800556603000500011351977C1
+u.wallet->cards[0].holder;        // YARA CARVALHO SOUZA
+```
+
+| Request | The user replaces | Used as given |
+|---------|-------------------|---------------|
+| `identity_request` | `country`, `birth_date`, `sex`, `given_names`, `surname`, `second_surname`, `residence`, `reference_date`, `safe` | `schemes`, `documents`, `birthplace`, `weighted` |
+| `finance_request` | `country`, `birth_date`, `given_names`, `surname`, `reference_date`, `safe` | `accounts`, `cards`, `card_numbers`, `network`, `holding`, `weighted` |
+
+- **The place.** The address is the residence, and a birthplace left unset is the same place, so a number that encodes a place encodes the address's. A person who was born elsewhere needs `birthplace` set.
+- **The names.** The surname is the family name. A second surname goes to `second_surname` for the document's number and machine-readable zone, and to the card with the first. Where a culture has no family name (Iceland), the patronymic stands in.
+- **Numbers.** A country with no published structure has no number (see `idg::number_countries()`), so `numbers` can be empty; its documents are still drawn.
+- **Off by default.** Each part draws from its own stream (`"identity"`, `"finance"`), so turning it on changes nothing else, except that a drawn country is one the library has too. All 100 supported countries are in both libraries.
+- **Headers and data.** `usergen.hpp` always includes `idgen.hpp` and `fingen.hpp`, so both must be on the include path. Their data is loaded only by the first user that asks. Pass your own instances through `usg::sources::identity` and `usg::sources::finance`.
+- **Safe.** `request.safe` reaches both libraries. An explicit `card_numbers = network_range` under `safe` is finance-generator's error.
+
+Read the [limits](../README.md#limits) first. These values are test data.
+
 ## Seeding and Deterministic Generation
 
 - `get_user(request, seed)` gives the same result for the same request, seed and data, on every platform, without advancing the instance engine.
 - `get_user(request)` draws a fresh seed from the instance engine, initially seeded from system entropy. There are no generator-level `seed()` or `unseed()` controls; for deterministic sequences, keep a `dasmig::core::rng` in the caller and pass its next value as the seed.
 - `u.seed()` is the seed a result was generated from: `get_user(request, u.seed())` replays it with the same request and data.
-- Each part (`country`, `birth`, `name`, `username`, `email`, `phone`, `address`, `password`, `dates`, `status`, `platform`, `locale`, `timezone`) draws from a stream split from the seed by that name, so forcing one choice, or changing the password policy, does not shift the others. The one exception is the country: when it is drawn, the same seed can end on a different country if the data of a library changes.
+- Each part (`country`, `birth`, `name`, `username`, `email`, `phone`, `address`, `password`, `dates`, `status`, `platform`, `locale`, `timezone`, `device`, `identity`, `finance`) draws from a stream split from the seed by that name, so forcing one choice, or changing the password policy, does not shift the others. The one exception is the country: when it is drawn, the same seed can end on a different country if the data of a library changes.
 
 ## Extending Data
 
@@ -233,15 +271,15 @@ using dasmig::user_table;
 
 // From a directory holding any of the table files, or from one file with a table's name.
 gen.extend("mods/user");
-gen.extend("mods/locales.tsv");
+gen.extend("mods/statuses.tsv");
 
 // From text, for example supplied by a WebAssembly host.
 gen.extend_from_string(user_table::statuses,
                        "key\tlabel\tlogin\tweight\npending\tPending\tnever\t5\n", "scenario");
 
 // Replace a table instead of overriding rows.
-gen.extend_from_string(user_table::timezones,
-                       "country\ttimezone\tweight\nBR\tAmerica/Sao_Paulo\t1\n", "one-zone",
+gen.extend_from_string(user_table::statuses,
+                       "key\tlabel\tlogin\tweight\nactive\tActive\trecent\t1\n", "all-active",
                        dasmig::core::layer_mode::replace);
 
 // Remove a row: the key columns and disabled.
@@ -252,7 +290,7 @@ gen.extend_from_string(user_table::platforms,
 - Every value in a layer is checked before anything changes. A bad layer throws `dasmig::core::tsv_error` with the file, line and column, and the data stays as it was. A layer for a directory is applied to all its tables or to none.
 - `layers(table)` lists what is loaded in a table: source, mode, rows added, replaced and removed, and warnings such as unknown columns.
 - `load(...)` replaces the base and drops every layer.
-- To extend the data of a library it composes (for example more phone ranges), call that library's `extend`; the user's `data_hash()` follows.
+- To extend the data of a library it composes (for example more phone ranges), call that library's `extend`; the user's `data_hash()` follows. The locales and time zones are country-generator's: extend them with `cntg::extend(country_table, ...)`.
 
 ## Replay and JSON
 
@@ -274,11 +312,11 @@ u.signature().data; // gen.data_hash() when it was generated: the account tables
  "account":{"username":"iam_ycarvalho63","password":"684*+!ZsY=zc43",
             "created":"2019-02-05T07:32:31Z","last_login":"2023-05-22T04:07:35Z",
             "status":"active","platform":"android-phone","device":"phone","os":"Android",
-            "locale":"pt-BR","timezone":"America/Sao_Paulo","currency":"BRL"},
+            "locale":"pt-BR","timezone":"America/Fortaleza","currency":"BRL","currency_digits":2},
  "signature":{"seed":"000000000000002a","data":"..."}}
 ```
 
-A user with a device has `"device":{...}` after `"account"`, as device-generator writes it.
+A user with a device has `"device":{...}` after `"account"`, as device-generator writes it, then `"identity":{...}` and `"finance":{...}`, as those libraries write them. A part not asked for leaves its key out.
 
 Seeds are strings because JavaScript numbers cannot hold every 64-bit value. `to_json(writer)` writes into an existing `dasmig::core::json_writer`, for composing larger documents.
 
@@ -286,7 +324,7 @@ Seeds are strings because JavaScript numbers cannot hold every 64-bit value. `to
 
 Define `DASMIG_USER_EMBED` before including the header to compile the account tables' `lite` tier into the program. `load(dataset::lite)` and `instance()` then use it and need no files. The compiled-in data has the same `data_hash()` as the files, so seeds replay the same either way.
 
-`dasmig/usergen_data.hpp` is generated from `resources/lite` by `make embed`; CI checks it is up to date. Define the other libraries' macros too (`DASMIG_ADDRESS_EMBED`, `DASMIG_BIRTH_EMBED`, `DASMIG_COUNTRY_EMBED`, `DASMIG_DEVICE_EMBED`, `DASMIG_EMAIL_EMBED`, `DASMIG_NAME_EMBED`, `DASMIG_NICKNAME_EMBED`, `DASMIG_PHONE_EMBED`) for a build without files.
+`dasmig/usergen_data.hpp` is generated from `resources/lite` by `make embed`; CI checks it is up to date. Define the other libraries' macros too (`DASMIG_ADDRESS_EMBED`, `DASMIG_BIRTH_EMBED`, `DASMIG_COUNTRY_EMBED`, `DASMIG_COUNTRY_EMBED_LOCALE`, `DASMIG_DEVICE_EMBED`, `DASMIG_EMAIL_EMBED`, `DASMIG_FINANCE_EMBED`, `DASMIG_ID_EMBED`, `DASMIG_NAME_EMBED`, `DASMIG_NICKNAME_EMBED`, `DASMIG_PHONE_EMBED`) for a build without files. Without `DASMIG_COUNTRY_EMBED_LOCALE` the country's locale tables must be readable from `resources/`, since every user's locale and time zone come from them.
 
 ## Thread Safety
 

@@ -5,9 +5,11 @@
 [![node](https://img.shields.io/node/v/@dasmig/user.svg)](https://www.npmjs.com/package/@dasmig/user)
 [![types](https://img.shields.io/badge/types-included-blue.svg)](https://www.npmjs.com/package/@dasmig/user)
 
-Fictional user records from one seeded call: name, birth date, postal address, phone number, email address, and an account with username, password, sign-up and last-login times, status, device, locale and time zone, and, when asked, the device of the last sign-in with its user agent and IP address. It is [user-generator](https://github.com/dasmig/user-generator) (C++23) compiled to WebAssembly, with the `lite` data of the nine libraries it composes built in, so nothing is fetched at run time but the module's own `user.wasm`.
+Fictional user records from one seeded call: name, birth date, postal address, phone number, email address, and an account with username, password, sign-up and last-login times, status, device, locale and time zone, and, when asked, the device of the last sign-in with its user agent and IP address, national numbers and documents, and bank accounts and cards. It is [user-generator](https://github.com/dasmig/user-generator) (C++23) compiled to WebAssembly, with the `lite` data of the eleven libraries it composes built in, so nothing is fetched at run time but the module's own `user.wasm`.
 
 The output is fictional test data, not a description of a real person. Passwords are plain text for the account's policy and never real credentials; `safe: true` makes emails and (where a country has a range) phone numbers that reach no one.
+
+National numbers, accounts and cards are test data. Without `safe` they are structurally valid and may match a real person's: never use them to identify anyone, to open accounts, to pass a check, or on a live payment system. See [the limits](https://github.com/dasmig/user-generator#limits).
 
 ```js
 import { createUserGenerator } from '@dasmig/user';
@@ -74,18 +76,22 @@ Every field is optional. What is left out is drawn; what is given conditions the
 | `safe` | `true` for contacts that reach no one | `false` |
 | `status` | `'active'`, `'inactive'`, `'unverified'` or `'suspended'` | Drawn |
 | `device` | `true` to add the device of the last sign-in | `false` |
+| `identity` | `true` for the national numbers, or `{ documents: ['passport', 'id_card'] }` to add documents | `false` |
+| `finance` | `true` for one current account, or `{ accounts, cards, cardNumbers, network, holding }` | `false` |
 | `seed` | A `bigint`, a non-negative safe integer, or a **hexadecimal** string | Random |
 
 - **Countries.** Only the countries in `users.countries` have data in all the libraries, so another code is an error rather than a user with a name from the wrong culture.
 - **Dates.** The generator never reads the clock. Pass `referenceDate: new Date()` for ages and account dates as of today, and keep the date with the seed if the user must replay.
 - **Device.** `device: true` adds `device`, from [device-generator](https://github.com/dasmig/device-generator): a model, OS and browser version that fit together at the last login (the sign-up time for an account that never logged in; a date before 2021 is seen as 2021-01-01), the user agent and client hints that combination sends, the `Accept-Language` header of the account's locale, a screen and an IP address in the country. It uses the account's platform, so the two agree; with `safe: true` the address is from a documentation range. Nothing else in the user changes.
+- **Papers.** `identity` adds `identity`, from [id-generator](https://github.com/dasmig/id-generator): the numbers of the country's primary scheme, built from the person's birth date, sex, names and address, and the documents asked for. A country with no published structure has no number.
+- **Wallet.** `finance` adds `finance`, from [finance-generator](https://github.com/dasmig/finance-generator). `accounts` takes `current` and `savings`; `cards` takes `debit`, `credit`, `prepaid` and `any`; `cardNumbers` takes `network_range`, `test_number` and `wrong_check`; `holding: 'surveyed'` makes what is asked for a chance, by the country's Global Findex shares.
 - **Seeds.** A seed is a 64-bit unsigned integer. A string is read as hexadecimal, optionally after `0x`, which is the form of `signature.seed`: `seed: '42'` is 0x42 (66), not 42.
 
 An invalid request throws before anything is generated: a `TypeError` for a field of the wrong type or an unknown field, and a `RangeError` for a value out of range. The message says which field and why. A failed call leaves the generator usable.
 
 ## Result
 
-`generate()` returns a `User` (see `index.d.ts`). It has `name`, `given`, `family`, `sex`, `age`, `country` and `signature`, each library's own result under `birth`, `address`, `phone` and `email`, the `account`, and, with `device: true`, the `device`. `generateJson()` returns the same as JSON text, exactly as the C++ library writes it.
+`generate()` returns a `User` (see `index.d.ts`). It has `name`, `given`, `family`, `sex`, `age`, `country` and `signature`, each library's own result under `birth`, `address`, `phone` and `email`, the `account`, and, when asked, the `device`, `identity` and `finance`. `generateJson()` returns the same as JSON text, exactly as the C++ library writes it.
 
 Each part draws from its own random stream, split from the user's seed. Forcing one choice (the status, say) does not shift the unrelated parts.
 
@@ -114,13 +120,13 @@ pool.close();
 
 To recreate a user later, store its `signature.seed` and the request it was made with, including `referenceDate`.
 
-The same seed and request give the same user **only with the same data**. `users.dataHash` identifies the data of all eight libraries, `users.deviceDataHash` device-generator's, and `users.versions` lists the library versions the module was built from. Store `dataHash` with the seed (and `deviceDataHash` for users with a device): if a package update changes it, the saved seed gives a different user.
+The same seed and request give the same user **only with the same data**. `users.dataHash` identifies the data of all eight libraries, `users.deviceDataHash` device-generator's, `users.identityDataHash` id-generator's, `users.financeDataHash` finance-generator's, and `users.versions` lists the library versions the module was built from. Store `dataHash` with the seed (and the others for users with those parts): if a package update changes it, the saved seed gives a different user.
 
 Each part of a user also has a `signature`, with its own seed and its library's data hash.
 
 ## Data
 
-The data comes from open datasets and from tables written for the libraries (statuses, platform shares by country, locales and time zones, device models, browser shares and user-agent formats). `DATA_LICENSES.txt` lists each source and its licence. Each library documents its data's limits in its own `doc/data.md`; the account tables' estimates are described in [user-generator's data notes](https://github.com/dasmig/user-generator/blob/HEAD/doc/data.md).
+The data comes from open datasets and from tables written for the libraries (statuses, platform shares by country, device models, browser shares and user-agent formats). `DATA_LICENSES.txt` lists each source and its licence. Each library documents its data's limits in its own `doc/data.md`; the account tables' estimates are described in [user-generator's data notes](https://github.com/dasmig/user-generator/blob/HEAD/doc/data.md).
 
 ## Versions
 

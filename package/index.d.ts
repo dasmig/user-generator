@@ -34,6 +34,18 @@ export interface UserRequest {
    */
   device?: boolean;
   /**
+   * Add `identity`, the person's national numbers and documents (id-generator), from their birth date,
+   * sex, names and address. `true` asks for the numbers only. Reserved numbers and documents when `safe`.
+   * Default false; turning it on changes nothing else.
+   */
+  identity?: boolean | IdentityOptions;
+  /**
+   * Add `finance`, the person's bank accounts and payment cards (finance-generator). `true` asks for one
+   * current account. Default false; turning it on changes nothing else. A card number from
+   * `network_range`, the library's default without `safe`, may match a real card: test data only.
+   */
+  finance?: boolean | FinanceOptions;
+  /**
    * The call seed, a 64-bit unsigned integer: a bigint, a non-negative safe integer, or a string
    * of 1-16 **hexadecimal** digits with an optional `0x` (so `'42'` is 0x42, not 42), the form of
    * `signature.seed`. Unset draws a random one. The same seed, request and data give the same user.
@@ -124,10 +136,12 @@ export interface Account {
   os: string;
   /** BCP 47 tag, for example `pt-BR`. */
   locale: string;
-  /** IANA name, or a UTC offset where no zone is listed. */
+  /** IANA name. */
   timezone: string;
   /** ISO 4217 code. */
   currency: string;
+  /** The currency's minor-unit digits (2 for `BRL`, 0 for `JPY`). */
+  currency_digits: number;
 }
 
 /** The device a user last signed in from (device-generator's JSON). */
@@ -166,6 +180,63 @@ export interface Device {
   signature: Signature;
 }
 
+export interface IdentityOptions {
+  /** The documents to add. Default none; a document the person cannot hold is left out. */
+  documents?: ('passport' | 'id_card')[];
+}
+
+export interface FinanceOptions {
+  /** The accounts to add. Default one current account; empty for none. */
+  accounts?: ('current' | 'savings')[];
+  /** The cards to add; `any` draws the kind by the country's ratio. Default none. */
+  cards?: ('debit' | 'credit' | 'prepaid' | 'any')[];
+  /** Where the card numbers come from. Default `network_range`, or `test_number` when `safe`. */
+  cardNumbers?: 'network_range' | 'test_number' | 'wrong_check';
+  /** A card network, for example `visa`. Unset draws one for the country. */
+  network?: string;
+  /** `surveyed` makes what is asked for a chance, by the country's Global Findex shares. Default `asked`. */
+  holding?: 'asked' | 'surveyed';
+}
+
+/** One national number (id-generator's JSON). */
+export interface IdNumber {
+  /** Scheme key, for example `br-cpf`. */
+  scheme: string;
+  label: string;
+  native_label: string;
+  /** Electronic form. */
+  value: string;
+  /** Display form. */
+  formatted: string;
+  assigned: string;
+  /** The encoded place; empty when none. */
+  place_code: string;
+  /** True when made by the scheme's safe method. */
+  reserved: boolean;
+}
+
+/** The numbers and documents of a person (id-generator's JSON). */
+export interface Identity {
+  country_code: string;
+  birth_date: string;
+  sex: Sex;
+  numbers: IdNumber[];
+  /** The fields are as id-generator writes them; see its documentation. */
+  documents: Record<string, unknown>[];
+  signature: Signature;
+}
+
+/** The accounts and cards of a person (finance-generator's JSON). */
+export interface Finance {
+  country_code: string;
+  birth_date: string;
+  /** The fields are as finance-generator writes them; see its documentation. */
+  accounts: Record<string, any>[];
+  /** The fields are as finance-generator writes them; see its documentation. */
+  cards: Record<string, any>[];
+  signature: Signature;
+}
+
 /** One user: each library's result, as that library writes it. */
 export interface User {
   name: string;
@@ -182,6 +253,10 @@ export interface User {
   account: Account;
   /** Only with `device: true`. */
   device?: Device;
+  /** Only with `identity`. */
+  identity?: Identity;
+  /** Only with `finance`. */
+  finance?: Finance;
   /** `generate({ ...request, seed: user.signature.seed })` replays this user. */
   signature: Signature;
 }
@@ -199,6 +274,10 @@ export interface UserGenerator {
    * combines it with `dataHash`, so it changes when either does.
    */
   readonly deviceDataHash: string;
+  /** Hash of id-generator's data (16 hex digits), combined next into the `signature.data` of a user with `identity`. */
+  readonly identityDataHash: string;
+  /** Hash of finance-generator's data (16 hex digits), combined last into the `signature.data` of a user with `finance`. */
+  readonly financeDataHash: string;
   /** The library versions (git tags) this module was built from. */
   readonly versions: Readonly<Record<string, string>>;
   /**
