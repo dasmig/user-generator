@@ -4,7 +4,7 @@
 // loading all of them; the lite tier is compiled in (see the Makefile). A
 // library without the tier keeps what it has: this one ships only lite
 // account data, so the full tier is every other library's full data with lite
-// platforms, statuses and regional settings.
+// platforms and statuses.
 
 #include "../dasmig/usergen.hpp"
 #include "bench.hpp"
@@ -21,6 +21,8 @@ bool load_all(dasmig::usg& gen, dasmig::dataset tier)
     (void)dasmig::adg::instance().load(tier);
     (void)dasmig::phg::instance().load(tier);
     (void)dasmig::emg::instance().load(tier);
+    (void)dasmig::idg::instance().load(tier);
+    (void)dasmig::fng::instance().load(tier);
     return gen.load(tier) || gen.load(dasmig::dataset::lite);
 }
 } // namespace
@@ -39,6 +41,9 @@ int main(int argc, char** argv)
 
     run.calls("get_user", [&](std::uint64_t seed) { return gen.get_user({}, seed); });
     run.calls("get_user BR", [&](std::uint64_t seed) { return gen.get_user({.country = "BR"}, seed); });
+    run.calls("get_user papers and wallet", [&](std::uint64_t seed) {
+        return gen.get_user({.identity = dasmig::identity_request{}, .finance = dasmig::finance_request{}}, seed);
+    });
     run.calls("get_user to_json", [&](std::uint64_t seed) { return gen.get_user({}, seed).to_json(); });
 
     run.batches("get_user_batch", [&](std::size_t count, std::size_t threads, std::uint64_t seed) {

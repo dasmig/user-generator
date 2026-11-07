@@ -63,9 +63,7 @@ TEST_CASE("load(dataset::lite) loads the account tables", "[loading]")
     const auto gen = make_loaded_generator();
     REQUIRE(gen.has_account_data());
     for (const auto t : {dasmig::user_table::platforms, dasmig::user_table::platform_shares,
-                         dasmig::user_table::statuses, dasmig::user_table::languages,
-                         dasmig::user_table::locales, dasmig::user_table::timezones,
-                         dasmig::user_table::password_words, dasmig::user_table::password_patterns})
+                         dasmig::user_table::statuses, dasmig::user_table::password_words, dasmig::user_table::password_patterns})
     {
         REQUIRE(gen.layers(t).size() == 1);
     }
@@ -554,38 +552,73 @@ TEST_CASE("changing the password policy changes nothing else", "[generation][see
     }
 }
 
-TEST_CASE("locale, time zone and currency follow the country", "[account][regional]")
+TEST_CASE("locale, time zone and currency come from country-generator", "[account][regional]")
 {
     const auto gen = make_loaded_generator();
+    const auto& countries = dasmig::cntg::instance();
+    std::set<std::string> ca_locales;
     std::set<std::string> br_zones;
-    std::set<std::string> ch_locales;
     for (std::uint64_t seed = 0; seed < 400; ++seed)
     {
-        const auto br = gen.get_user({.country = "BR"}, seed);
-        REQUIRE(br.account.locale == "pt-BR");
-        REQUIRE(br.account.currency == "BRL");
-        br_zones.insert(br.account.timezone);
-        ch_locales.insert(gen.get_user({.country = "CH"}, seed).account.locale);
+        for (const char* code : {"BR", "CA", "JP", "CH"})
+        {
+            const auto u = gen.get_user({.country = code}, seed);
+            const dasmig::core::rng call{seed};
+            const auto locale = countries.get_locale({.country = code}, call.split("locale")());
+            REQUIRE(u.account.locale == locale.tag);
+            REQUIRE(u.account.currency == locale.currency_code);
+            REQUIRE(u.account.currency_digits == locale.currency_digits);
+            REQUIRE(u.account.timezone == countries.get_time_zone({.country = code}, call.split("timezone")()).name);
+        }
+        ca_locales.insert(gen.get_user({.country = "CA"}, seed).account.locale);
+        br_zones.insert(gen.get_user({.country = "BR"}, seed).account.timezone);
         REQUIRE(gen.get_user({.country = "JP"}, seed).account.timezone == "Asia/Tokyo");
         REQUIRE(gen.get_user({.country = "JP"}, seed).account.currency == "JPY");
+        REQUIRE(gen.get_user({.country = "JP"}, seed).account.currency_digits == 0);
+        REQUIRE(gen.get_user({.country = "BR"}, seed).account.currency_digits == 2);
     }
-    REQUIRE(br_zones == std::set<std::string>{"America/Sao_Paulo", "America/Manaus", "America/Fortaleza"});
-    REQUIRE(ch_locales.contains("de-CH"));
-    REQUIRE(ch_locales.contains("fr-CH"));
+    REQUIRE(ca_locales == std::set<std::string>{"en-CA", "fr-CA"});
+    REQUIRE(br_zones.contains("America/Sao_Paulo"));
+    REQUIRE(br_zones.contains("America/Manaus"));
 }
 
-TEST_CASE("a country without a locale or time zone row falls back to the country data", "[account][regional]")
+TEST_CASE("every supported country has a locale, a zone and an IANA name for it", "[account][regional]")
 {
+    const auto gen = make_loaded_generator();
+    for (const auto& code : gen.supported_countries())
+    {
+        if (code == "KR") continue; // the lite tier has no male Korean names: not a locale question
+        const auto u = gen.get_user({.country = code}, 11);
+        REQUIRE_FALSE(u.account.locale.empty());
+        REQUIRE(u.account.timezone.find('/') != std::string::npos);
+        REQUIRE_FALSE(u.account.currency.empty());
+    }
+}
+
+TEST_CASE("a country instance without the locale tables is no data", "[account][regional][loading]")
+{
+    dasmig::cntg bare;
+    bare.load(std::filesystem::path{"no/such/directory"});
+    dasmig::usg gen{dasmig::usg::sources{.country = &bare}};
+    REQUIRE(gen.load(dasmig::dataset::lite));
+    REQUIRE_FALSE(gen.has_data());
+    REQUIRE_THROWS_AS(gen.get_user({.country = "BR"}, 1), std::runtime_error);
+}
+
+TEST_CASE("the data hash covers the locale tables", "[account][regional][loading]")
+{
+    auto& countries = dasmig::cntg::instance();
     auto gen = make_loaded_generator();
-    // Keep only a few rows, so the fallback is exercised on any country.
-    gen.extend_from_string(dasmig::user_table::locales, "country\tlocale\tweight\nBR\tpt-BR\t1\n", "t.tsv",
-                           dasmig::core::layer_mode::replace);
-    gen.extend_from_string(dasmig::user_table::timezones, "country\ttimezone\tweight\nBR\tAmerica/Sao_Paulo\t1\n",
-                           "t.tsv", dasmig::core::layer_mode::replace);
-    const auto u = gen.get_user({.country = "DE"}, 4);
-    REQUIRE(u.account.locale == "de-DE");               // first language German, from languages.tsv
-    REQUIRE(u.account.timezone.starts_with("UTC"));     // country-generator's UTC offset
-    REQUIRE(gen.get_user({.country = "BR"}, 4).account.timezone == "America/Sao_Paulo");
+    const auto before = gen.data_hash();
+    dasmig::cntg own;
+    REQUIRE(own.load(dasmig::dataset::lite));
+    dasmig::usg same{dasmig::usg::sources{.country = &own}};
+    REQUIRE(same.load(dasmig::dataset::lite));
+    REQUIRE(same.data_hash() == before);
+    own.extend_from_string(dasmig::country_table::currencies, "code\tnumeric\tdigits\tcash_digits\nXTS\t963\t2\t\n", "currencies.tsv");
+    REQUIRE(own.locale_data_hash() != countries.locale_data_hash());
+    REQUIRE(same.data_hash() != before);
+    REQUIRE(same.get_user({.country = "FR"}, 1).signature().data == same.data_hash());
 }
 
 TEST_CASE("platform shares follow the country", "[account][platform]")
@@ -767,6 +800,299 @@ TEST_CASE("the device in JSON", "[device][json]")
 }
 
 // ---------------------------------------------------------------------------
+// Papers and wallet
+// ---------------------------------------------------------------------------
+
+namespace
+{
+std::chrono::year_month_day born_on(const dasmig::user& u)
+{
+    return std::chrono::year{u.birthday.year} / std::chrono::month{u.birthday.month} /
+           std::chrono::day{u.birthday.day};
+}
+
+dasmig::identity_request with_documents()
+{
+    dasmig::identity_request r;
+    r.documents = {dasmig::id_document_kind::passport, dasmig::id_document_kind::id_card};
+    return r;
+}
+
+dasmig::finance_request with_card()
+{
+    dasmig::finance_request r;
+    r.cards = {dasmig::card_kind::debit};
+    r.card_numbers = dasmig::card_source::test_number;
+    return r;
+}
+} // namespace
+
+TEST_CASE("no papers or wallet unless the request asks", "[identity][finance]")
+{
+    const auto gen = make_loaded_generator();
+    const auto u = gen.get_user({.country = "BR"}, 3);
+    REQUIRE_FALSE(u.papers.has_value());
+    REQUIRE_FALSE(u.wallet.has_value());
+    REQUIRE(u.to_json().find("\"identity\":") == std::string::npos);
+    REQUIRE(u.to_json().find("\"finance\":") == std::string::npos);
+    REQUIRE(u.signature().data == gen.data_hash());
+}
+
+TEST_CASE("the papers are id-generator's for this person", "[identity]")
+{
+    const auto gen = make_loaded_generator();
+    const auto& ids = dasmig::idg::instance();
+    for (std::uint64_t seed = 0; seed < 200; ++seed)
+    {
+        const auto u = gen.get_user({.country = "IT", .identity = with_documents()}, seed);
+        REQUIRE(u.papers.has_value());
+        REQUIRE(u.papers->country_code == "IT");
+        REQUIRE(u.papers->birth_date == born_on(u));
+        REQUIRE(u.papers->bio_sex == u.person_sex());
+
+        auto own = with_documents();
+        own.country = "IT";
+        own.birth_date = born_on(u);
+        own.sex = u.person_sex();
+        own.given_names = u.given;
+        own.surname = u.family;
+        own.residence = dasmig::id_place{.country_code = "IT",
+                                         .admin1_code = u.location.admin1_code,
+                                         .geonameid = u.location.geonameid};
+        const auto alone = ids.get_identity(own, dasmig::core::rng{seed}.split("identity")());
+        REQUIRE(u.papers->to_json() == alone.to_json());
+
+        for (const auto& n : u.papers->numbers) REQUIRE(ids.is_valid(n.scheme, n.value));
+        REQUIRE(u.signature().data == dasmig::core::hash_combine(gen.data_hash(), ids.data_hash()));
+    }
+}
+
+TEST_CASE("the wallet is finance-generator's for this person", "[finance]")
+{
+    const auto gen = make_loaded_generator();
+    const auto& banks = dasmig::fng::instance();
+    for (std::uint64_t seed = 0; seed < 200; ++seed)
+    {
+        const auto u = gen.get_user({.country = "DE", .finance = with_card()}, seed);
+        REQUIRE(u.wallet.has_value());
+        REQUIRE(u.wallet->country_code == "DE");
+        REQUIRE(u.wallet->birth_date == born_on(u));
+
+        auto own = with_card();
+        own.country = "DE";
+        own.birth_date = born_on(u);
+        own.given_names = u.given;
+        own.surname = u.family;
+        const auto alone = banks.get_finance(own, dasmig::core::rng{seed}.split("finance")());
+        REQUIRE(u.wallet->to_json() == alone.to_json());
+
+        for (const auto& a : u.wallet->accounts) REQUIRE(banks.is_valid(a.scheme, a.iban));
+        REQUIRE(u.signature().data == dasmig::core::hash_combine(gen.data_hash(), banks.data_hash()));
+    }
+}
+
+TEST_CASE("asking for papers and a wallet changes nothing else", "[identity][finance][seed]")
+{
+    const auto gen = make_loaded_generator();
+    for (std::uint64_t seed = 0; seed < 300; ++seed)
+    {
+        for (const bool drawn : {false, true})
+        {
+            dasmig::user_request plain;
+            if (!drawn) plain.country = "BR";
+            const auto u = gen.get_user(plain, seed);
+
+            auto with = plain;
+            with.identity = with_documents();
+            with.finance = with_card();
+            const auto v = gen.get_user(with, seed);
+
+            // The user's JSON, without the parts asked for and without the signature.
+            auto rest = v;
+            rest.papers.reset();
+            rest.wallet.reset();
+            const auto strip = [](const std::string& json) { return json.substr(0, json.rfind(",\"signature\":")); };
+            REQUIRE(strip(rest.to_json()) == strip(u.to_json()));
+        }
+    }
+}
+
+TEST_CASE("the signature combines device, identity and finance in that order", "[identity][finance][device]")
+{
+    const auto gen = make_loaded_generator();
+    const auto u = gen.get_user({.country = "FR", .device = true, .identity = with_documents(), .finance = with_card()}, 5);
+    auto expected = dasmig::core::hash_combine(gen.data_hash(), dasmig::dvg::instance().data_hash());
+    expected = dasmig::core::hash_combine(expected, dasmig::idg::instance().data_hash());
+    expected = dasmig::core::hash_combine(expected, dasmig::fng::instance().data_hash());
+    REQUIRE(u.signature().data == expected);
+}
+
+TEST_CASE("a place code follows the address", "[identity]")
+{
+    const auto gen = make_loaded_generator();
+    // Italy and Serbia code the city, Mexico and Brazil the region; Brazil's
+    // address writes an abbreviation, and the code is still the region's.
+    int seen = 0;
+    for (std::uint64_t seed = 0; seed < 200; ++seed)
+    {
+        const auto mx = gen.get_user({.country = "MX", .identity = dasmig::identity_request{}}, seed);
+        const auto again = gen.get_user({.country = "MX", .identity = dasmig::identity_request{}}, seed + 1000);
+        if (!mx.papers->numbers.empty() && !again.papers->numbers.empty() &&
+            mx.location.admin1_code == again.location.admin1_code)
+        {
+            REQUIRE(mx.papers->numbers[0].place_code == again.papers->numbers[0].place_code);
+            ++seen;
+        }
+    }
+    REQUIRE(seen > 0);
+    const auto br = [&](std::uint64_t seed) { return gen.get_user({.country = "BR", .identity = dasmig::identity_request{}}, seed); };
+    std::map<std::string, std::set<std::string>> digits; // by state
+    for (std::uint64_t seed = 0; seed < 600; ++seed)
+    {
+        const auto u = br(seed);
+        if (!u.papers->numbers.empty()) digits[u.location.admin1_code].insert(u.papers->numbers[0].place_code);
+    }
+    REQUIRE(digits.size() > 5);
+    for (const auto& [state, codes] : digits) REQUIRE(codes.size() == 1);
+}
+
+TEST_CASE("a double surname reaches the document as two surnames", "[identity]")
+{
+    const auto gen = make_loaded_generator();
+    int two = 0;
+    for (std::uint64_t seed = 0; seed < 200; ++seed)
+    {
+        const auto u = gen.get_user({.country = "MX", .identity = with_documents()}, seed);
+        const auto space = u.family.find(' ');
+        if (space == std::string::npos || u.family.find(' ', space + 1) != std::string::npos) continue;
+        if (u.papers->numbers.empty() || u.papers->documents.empty()) continue;
+        const auto second = u.family.substr(space + 1);
+        if (second[0] < 'A' || second[0] > 'Z') continue;
+        ++two;
+
+        // The CURP's third letter is the second surname's first (a surname of its
+        // own, not a letter inside "Gamez Arroyo").
+        REQUIRE(u.papers->numbers[0].value[2] == second[0]);
+
+        // The MRZ writes both surnames before the given names.
+        const auto& line = u.papers->documents[0].mrz.front();
+        const auto surnames = line.substr(5, line.find("<<") - 5);
+        REQUIRE(surnames.find('<') != std::string::npos);
+    }
+    REQUIRE(two > 50);
+}
+
+TEST_CASE("a patronymic stands in for a missing family name", "[identity][finance]")
+{
+    const auto gen = make_loaded_generator();
+    for (std::uint64_t seed = 0; seed < 100; ++seed)
+    {
+        const auto u = gen.get_user({.country = "IS", .identity = with_documents(), .finance = with_card()}, seed);
+        REQUIRE(u.family.empty());
+        const auto& passport = u.papers->documents.front();
+        REQUIRE_FALSE(passport.mrz.empty());
+        REQUIRE(passport.mrz.front().find("<<") != std::string::npos);
+        // The card has the whole name, not only the given one.
+        REQUIRE(u.wallet->cards.front().holder.find(' ') != std::string::npos);
+    }
+}
+
+TEST_CASE("safe reaches the papers and the wallet", "[identity][finance][safe]")
+{
+    const auto gen = make_loaded_generator();
+    for (std::uint64_t seed = 0; seed < 100; ++seed)
+    {
+        dasmig::finance_request money;
+        money.cards = {dasmig::card_kind::credit};
+        const auto u = gen.get_user({.country = "FR", .safe = true, .identity = with_documents(), .finance = money}, seed);
+        for (const auto& n : u.papers->numbers) REQUIRE(n.reserved);
+        for (const auto& d : u.papers->documents) REQUIRE(d.reserved);
+        for (const auto& a : u.wallet->accounts) REQUIRE(a.reserved);
+        for (const auto& c : u.wallet->cards) REQUIRE(c.reserved);
+    }
+    // An explicit real range under safe is finance-generator's error, and reaches the caller.
+    dasmig::finance_request bad;
+    bad.cards = {dasmig::card_kind::credit};
+    bad.card_numbers = dasmig::card_source::network_range;
+    REQUIRE_THROWS_AS(gen.get_user({.country = "FR", .safe = true, .finance = bad}, 1), std::invalid_argument);
+}
+
+TEST_CASE("the user's values replace the same fields of the request", "[identity][finance]")
+{
+    const auto gen = make_loaded_generator();
+    auto papers = with_documents();
+    papers.country = "JP";
+    papers.surname = "Someone Else";
+    papers.reference_date = std::chrono::year{2000} / 1 / 1;
+    dasmig::finance_request money;
+    money.country = "JP";
+    money.birth_date = std::chrono::year{2000} / 1 / 1;
+    const auto u = gen.get_user({.country = "FR", .identity = papers, .finance = money}, 9);
+    REQUIRE(u.papers->country_code == "FR");
+    REQUIRE(u.wallet->country_code == "FR");
+    REQUIRE(u.wallet->birth_date == born_on(u));
+    REQUIRE(u.papers->documents.front().mrz.front().find("SOMEONE") == std::string::npos);
+}
+
+TEST_CASE("what the request leaves to the library is used as given", "[identity][finance]")
+{
+    const auto gen = make_loaded_generator();
+    dasmig::identity_request papers;
+    papers.schemes = std::vector<std::string>{};
+    papers.documents = {dasmig::id_document_kind::passport};
+    dasmig::finance_request money;
+    money.accounts = {dasmig::account_kind::current, dasmig::account_kind::savings};
+    money.network = "visa";
+    money.card_numbers = dasmig::card_source::test_number;
+    money.cards = {dasmig::card_kind::debit};
+    const auto u = gen.get_user({.country = "US", .identity = papers, .finance = money}, 2);
+    REQUIRE(u.papers->numbers.empty());
+    REQUIRE(u.papers->documents.size() == 1);
+    REQUIRE(u.wallet->accounts.size() == 2);
+    REQUIRE(u.wallet->cards.front().network == "visa");
+}
+
+TEST_CASE("the parts come from the generator's own instances", "[identity][finance][loading]")
+{
+    dasmig::idg no_ids;
+    dasmig::fng no_banks;
+    const auto gen = make_loaded_generator();
+    dasmig::usg own{dasmig::usg::sources{.identity = &no_ids, .finance = &no_banks}};
+    REQUIRE(own.load(dasmig::dataset::lite));
+    REQUIRE(own.get_user({.country = "FR"}, 1).to_json() == gen.get_user({.country = "FR"}, 1).to_json());
+    REQUIRE_THROWS(own.get_user({.country = "FR", .identity = dasmig::identity_request{}}, 1));
+    REQUIRE_THROWS(own.get_user({.country = "FR", .finance = dasmig::finance_request{}}, 1));
+}
+
+TEST_CASE("the parts in JSON", "[identity][finance][json]")
+{
+    const auto gen = make_loaded_generator();
+    const auto json = gen.get_user({.country = "FR", .device = true, .identity = with_documents(), .finance = with_card()}, 7).to_json();
+    const auto device_at = json.find("\"device\":{\"country_code\":\"FR\"");
+    const auto identity_at = json.find("\"identity\":{");
+    const auto finance_at = json.find("\"finance\":{");
+    REQUIRE(device_at != std::string::npos);
+    REQUIRE(identity_at != std::string::npos);
+    REQUIRE(finance_at != std::string::npos);
+    REQUIRE(device_at < identity_at);
+    REQUIRE(identity_at < finance_at);
+    REQUIRE(finance_at < json.rfind("\"signature\":"));
+}
+
+TEST_CASE("every supported country can have papers and a wallet", "[identity][finance]")
+{
+    const auto gen = make_loaded_generator();
+    for (const auto& code : gen.supported_countries())
+    {
+        if (code == "KR") continue; // the lite tier has no male Korean names
+        const auto u = gen.get_user({.country = code, .device = true, .identity = with_documents(), .finance = with_card()}, 21);
+        REQUIRE(u.papers.has_value());
+        REQUIRE_FALSE(u.papers->documents.empty());
+        REQUIRE_FALSE(u.wallet->accounts.empty());
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Conversion and JSON
 // ---------------------------------------------------------------------------
 
@@ -793,7 +1119,7 @@ TEST_CASE("to_json holds every part and the signature", "[json]")
     for (const auto* key : {"\"name\":", "\"given\":", "\"family\":", "\"sex\":", "\"age\":", "\"country\":{\"code\":\"FR\"",
                             "\"birth\":{", "\"address\":{", "\"phone\":{", "\"email\":{", "\"account\":{\"username\":",
                             "\"password\":", "\"created\":", "\"last_login\":", "\"status\":", "\"platform\":",
-                            "\"locale\":", "\"timezone\":", "\"currency\":\"EUR\"", "\"signature\":{\"seed\":"})
+                            "\"locale\":", "\"timezone\":", "\"currency\":\"EUR\"", "\"currency_digits\":2", "\"signature\":{\"seed\":"})
     {
         INFO(key);
         REQUIRE(json.find(key) != std::string::npos);
@@ -827,8 +1153,9 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
     REQUIRE(u.account.status == "active");
     REQUIRE(u.account.platform == "android-phone");
     REQUIRE(u.account.locale == "pt-BR");
-    REQUIRE(u.account.timezone == "America/Sao_Paulo");
+    REQUIRE(u.account.timezone == "America/Fortaleza");
     REQUIRE(u.account.currency == "BRL");
+    REQUIRE(u.account.currency_digits == 2);
 
     std::uint64_t h = 0xcbf29ce484222325ULL;
     for (std::uint64_t s = 0; s < 2000; ++s)
@@ -836,7 +1163,7 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    REQUIRE(h == 0xb3fb62e7098c616fULL);
+    REQUIRE(h == 0x226634c64ddd1b16ULL);
 }
 
 TEST_CASE("known answers with a device", "[kat][device]")
@@ -858,7 +1185,34 @@ TEST_CASE("known answers with a device", "[kat][device]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({.device = true}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    REQUIRE(h == 0xb00c6e6032e9fb47ULL);
+    REQUIRE(h == 0x84119dc1e0c8ad2bULL);
+}
+
+TEST_CASE("known answers with papers and a wallet", "[kat][identity][finance]")
+{
+    const auto gen = make_loaded_generator();
+    // The same user as above, with the numbers and documents of the pinned
+    // id-generator release and the account and card of finance-generator's.
+    dasmig::identity_request papers;
+    papers.documents = {dasmig::id_document_kind::passport};
+    dasmig::finance_request money;
+    money.cards = {dasmig::card_kind::debit};
+    money.card_numbers = dasmig::card_source::test_number;
+    const auto u = gen.get_user({.country = "BR", .person_sex = dasmig::sex::female, .identity = papers, .finance = money}, 42);
+    REQUIRE(u.name == "Yara Carvalho Souza");
+    REQUIRE(u.papers->numbers.at(0).formatted == "300.274.655-00");
+    REQUIRE(u.papers->documents.at(0).number == "LI206064");
+    REQUIRE(u.papers->documents.at(0).mrz.at(0) == "P<BRACARVALHO<SOUZA<<YARA<<<<<<<<<<<<<<<<<<<");
+    REQUIRE(u.wallet->accounts.at(0).iban == "BR0800556603000500011351977C1");
+    REQUIRE(u.wallet->cards.at(0).holder == "YARA CARVALHO SOUZA");
+
+    std::uint64_t h = 0xcbf29ce484222325ULL;
+    for (std::uint64_t s = 0; s < 500; ++s)
+    {
+        h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({.identity = papers, .finance = money}, s).to_json()));
+    }
+    INFO(std::format("{:016x}", h));
+    REQUIRE(h == 0xbe65b3ef0353fc43ULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -915,8 +1269,8 @@ TEST_CASE("a bad layer is rejected and leaves the data unchanged", "[extend][err
     REQUIRE_THROWS_AS(gen.extend_from_string(dasmig::user_table::statuses,
                                              "key\tlabel\tlogin\tweight\nx\tX\trecent\t-1\n", "bad.tsv"),
                       dasmig::core::tsv_error); // negative weight
-    REQUIRE_THROWS_AS(gen.extend_from_string(dasmig::user_table::locales,
-                                             "country\tlocale\tweight\nbr\tpt-BR\t1\n", "bad.tsv"),
+    REQUIRE_THROWS_AS(gen.extend_from_string(dasmig::user_table::platform_shares,
+                                             "country\tkey\tweight\nbr\tios-phone\t1\n", "bad.tsv"),
                       dasmig::core::tsv_error); // not an upper case country code
     REQUIRE_THROWS_AS(gen.extend_from_string(dasmig::user_table::platforms,
                                              "key\tlabel\tdevice\tos\tweight\nx\t\tphone\tos\t1\n", "bad.tsv"),
@@ -1023,5 +1377,5 @@ TEST_CASE("user batch: known answer of 1,000 items", "[batch][kat]")
                       [&](std::uint64_t, const dasmig::user& item)
                       { hash = dasmig::core::hash_combine(hash, dasmig::core::fnv1a64(item.to_json())); });
     INFO(std::format("{:016x}", hash));
-    REQUIRE(hash == 0xd24067e9a846edd1ULL);
+    REQUIRE(hash == 0x1d92d9c5e11ecd1aULL);
 }

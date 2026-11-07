@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 # Libraries with data compiled into the module (user's own is compiled in too).
-DATA_LIBRARIES = ["address", "birth", "country", "device", "email", "name", "nickname", "phone"]
+DATA_LIBRARIES = ["address", "birth", "country", "device", "email", "finance", "id", "name", "nickname", "phone"]
 # Every library the module is built from, for versions.mjs (user itself first).
 VERSION_LIBRARIES = ["user"] + DATA_LIBRARIES
 
@@ -78,6 +78,7 @@ def main() -> int:
     ]
     command += ["-I" + str(lib_dir[name]) for name in DATA_LIBRARIES]
     command += [f"-DDASMIG_{name.upper()}_EMBED" for name in DATA_LIBRARIES + ["user"]]
+    command += ["-DDASMIG_COUNTRY_EMBED_LOCALE"]  # the account's locale and zone come from these tables
     command += [
         str(ROOT / "wasm" / "user_api.cpp"), "-o", str(out / "user.mjs"),
         "-sWASM=1", "-sALLOW_MEMORY_GROWTH=1", "-sMODULARIZE=1", "-sEXPORT_ES6=1",
@@ -93,7 +94,7 @@ def main() -> int:
 
     # The package ships the libraries' compiled-in data, so it carries their
     # data licences, gathered from each checkout.
-    text = ("The user module compiles in the lite data of nine dasmig libraries.\n"
+    text = ("The user module compiles in the lite data of eleven dasmig libraries.\n"
             "Their data sources and licences follow, as each library states them.\n")
     for name in ["user"] + DATA_LIBRARIES:
         library = f"{name}-generator"

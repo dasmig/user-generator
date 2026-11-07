@@ -2,22 +2,25 @@
 
 The data in `resources/` and how user-generator uses it (rule 6 of the dasmig standard).
 
-user-generator keeps the data of the **account** only: the platforms, the statuses, the locale and time-zone tables, and the words and patterns of human-style passwords. Everything else a user holds comes from the libraries it composes, and each documents its own data, sources and limits.
+user-generator keeps the data of the **account** only: the platforms, the statuses, and the words and patterns of human-style passwords. The locale, time zone and currency come from country-generator (since 3.0.0). Everything else a user holds comes from the libraries it composes, and each documents its own data, sources and limits.
 
 ## Where the data comes from
 
 | Part | Library | Data notes |
 | --- | --- | --- |
-| Country, currency, languages | [country-generator](https://github.com/dasmig/country-generator) | `doc/data.md` |
+| Country, locale, time zone, currency | [country-generator](https://github.com/dasmig/country-generator) | CLDR, IANA tzdata and GeoNames; `doc/data.md` |
 | Birth, age, sex | [birth-generator](https://github.com/dasmig/birth-generator) | UN World Population Prospects age pyramids |
 | Name | [name-generator](https://github.com/dasmig/name-generator) | `philipperemy/name-dataset`; see the provenance note in its `doc/data.md` |
 | Username | [nickname-generator](https://github.com/dasmig/nickname-generator) | Word lists, curated |
 | Email | [email-generator](https://github.com/dasmig/email-generator) | Provider shares, curated |
 | Phone | [phone-generator](https://github.com/dasmig/phone-generator) | libphonenumber (Apache-2.0) |
 | Address | [address-generator](https://github.com/dasmig/address-generator) | OpenStreetMap, GeoNames, libaddressinput |
+| Device, when asked | [device-generator](https://github.com/dasmig/device-generator) | `doc/data.md` |
+| National numbers and documents, when asked | [id-generator](https://github.com/dasmig/id-generator) | `doc/data.md` |
+| Bank accounts and cards, when asked | [finance-generator](https://github.com/dasmig/finance-generator) | `doc/data.md` |
 | Account | this library | Authored; below |
 
-A user's data is the union of these, and its `signature().data` is a hash of the seven libraries' loaded data and the account tables.
+A user's data is the union of these, and its `signature().data` is a hash of the seven libraries' loaded data (country-generator's locale tables included) and the account tables, combined with device-generator's, id-generator's and finance-generator's when a user has those parts.
 
 ## Tiers
 
@@ -67,18 +70,6 @@ Key `key`.
 | `weight` | Share, any scale; `>= 0` |
 
 Four rows: `active` 88, `inactive` 7, `unverified` 3 and `suspended` 2. Authored, as a plausible mix for a consumer service; there is no source.
-
-### `locales.tsv` and `languages.tsv`: the locale
-
-`locales.tsv`, key `country` + `locale`: BCP 47 tags by country with a speaker share (`weight`). 102 rows for 83 countries; countries with several languages have several rows (Switzerland has `de-CH`, `fr-CH` and `it-CH`; Canada `en-CA` and `fr-CA`). Authored.
-
-A country without a row gets its first language from country-generator, written `<language>-<country>`, through `languages.tsv` (key `language`, column `code`: the language name as country-generator writes it, to ISO 639-1, or 639-2 where there is no two-letter code; 87 rows). A language that is not in the table gives `und` (undetermined): `und-XX`.
-
-### `timezones.tsv`: the time zone
-
-Key `country` + `timezone`: IANA names by country with a population share (`weight`). 109 rows for 83 countries; countries that span zones have several (the US and Canada six each, Russia five, Australia four, Brazil and Mexico three). Authored from the zones' populations, rounded.
-
-A country without a row gets the first UTC offset country-generator lists for it (`UTC+03:00`), or `UTC` if it lists none. The offset is a valid fixed offset, not a zone with daylight-saving rules.
 
 ### `password_words.tsv`: the words of human passwords
 
@@ -130,7 +121,8 @@ A call draws, each from a stream of its own split from the call seed by name:
 8. **`password`**: with the `random` style, a length drawn uniformly between the policy's bounds; one character from each allowed class if `require_each`, the rest from all allowed classes, then shuffled. With the `human` style, a pattern drawn by weight and filled in from the word table, the given name, the birth year and the username, then fitted to the policy: characters not allowed are dropped, it is cut to `max_length`, the missing class is added (capitalising the first letter, a digit or `!`) and it is padded to `min_length`; a password that cannot be fitted falls back to the random one.
 9. **`dates`**: the sign-up time and a draw for the login. The sign-up is between the later of the service start and the person's birthday of the sign-up age (13 by default), and the reference date, with the density growing towards the reference date (the square root of a uniform draw), so most accounts are recent.
 10. **`status`**: by weight, or the request's. The last login follows its `login` kind: `recent` is placed back from the reference date by the square of a uniform draw (most are very recent), `stale` uniformly between the sign-up and a year before the reference date (the sign-up itself when the account is younger than a year), `never` is empty.
-11. **`platform`**, **`locale`**, **`timezone`**: from the tables above and the country. The currency is country-generator's.
+11. **`platform`**: from the tables above and the country. **`locale`**, **`timezone`** (country-generator, `get_locale` and `get_time_zone`): the country, each from its own stream. The currency and its minor unit are the locale's.
+12. **`device`**, **`identity`**, **`finance`**, when asked: see the usage guide. The address is the identity's residence, by its `geonameid` and `admin1_code`.
 
 Times are ISO 8601 in UTC, to the second; the reference date is taken as midnight UTC, and the library never reads the clock.
 
@@ -141,5 +133,8 @@ Times are ISO 8601 in UTC, to the second; the reference date is taken as midnigh
 - Age does not condition the platform, the status or the sign-up time beyond the earliest date. An 80-year-old is as likely to be on a phone as a 20-year-old.
 - The email and the username are built from the same name, so they resemble each other, as they often do. They are not otherwise linked.
 - The address is independent of the phone number's area. A São Paulo address can have a Rio phone number.
+- The address is independent of the time zone: both follow the country, not each other, so a New Jersey address can have `America/Chicago`.
+- The locale is drawn from CLDR's speakers, not from what people set on a device, so a language many speak as a second language (`en-BR`, `en-BE`) is more common than it would be in a real user base.
+- A number's place code is the address's, so the birthplace and the place of issue are never different from where the person lives, unless the request sets `birthplace`.
 - The same name library data applies: before name-generator 4.1.0 some cultures' lists held fragments, and a country with no names for a sex is refused. See `supported_countries()`.
 - The library supports the countries the contact libraries cover (100 with the shipped data); the `lite` tier of some of them has few names or streets, so they repeat more.

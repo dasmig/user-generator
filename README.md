@@ -13,23 +13,36 @@
 
 **[API Reference](https://dasmig.github.io/user-generator/)** · **[Usage Guide](doc/usage.md)** · **[Data and Method](doc/data.md)** · **[Releases](https://github.com/dasmig/user-generator/releases)**
 
-Synthetic user records for apps, test databases and demos, composed from the other dasmig generators: one call draws a country, a birth and a name, then a username, an email, a phone number, a postal address and an account (password, sign-up and last-login times, status, platform, locale, time zone, currency), and returns them as typed results and one JSON document.
+Synthetic user records for apps, test databases and demos, composed from the other dasmig generators: one call draws a country, a birth and a name, then a username, an email, a phone number, a postal address and an account (password, sign-up and last-login times, status, platform, locale, time zone, currency), and, when asked, the person's device, national numbers, documents, bank accounts and cards, and returns them as typed results and one JSON document.
 
 ```
 Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 ```
 
+## Limits
+
+These apply when a request asks for `identity` or `finance`. Without them, a user has no numbers, documents, accounts or cards.
+
+- Without `safe`, national numbers, accounts and cards are structurally valid and may match a real person's. The libraries look nothing up and cannot tell.
+- They are test data. Never use them to identify anyone, to open accounts, to pass an identity or payment check, or on a live payment system. Trying card numbers on a live system is card testing, which is fraud, whatever produced them.
+- `safe` means different things per scheme, and for many accounts it promises nothing. See [id-generator's limits](https://github.com/dasmig/id-generator#limits) and [finance-generator's limits](https://github.com/dasmig/finance-generator#limits).
+- Documents and cards are data, not images.
+
 ## Features
 
 - **One Call, Seven Libraries**. The country is drawn once and passed to every part, so the name, the address, the phone number, the email and the account's locale agree. The username and the email are built from the name and the birth year.
 
-- **A Whole Account**. A password to a policy (length, character classes, no look-alike characters), random or in the human style (common words, names, years and digits), a sign-up time after the person is old enough and after the service started, a last login that follows the account's status (active, inactive, unverified, suspended), a device and platform by country, a locale, a time zone and a currency.
+- **A Whole Account**. A password to a policy (length, character classes, no look-alike characters), random or in the human style (common words, names, years and digits), a sign-up time after the person is old enough and after the service started, a last login that follows the account's status (active, inactive, unverified, suspended), a device and platform by country, and a locale, an IANA time zone and a currency with its minor unit from [country-generator](https://github.com/dasmig/country-generator).
 
 - **The Device, When Asked**. `request.device` adds the device of the last sign-in from [device-generator](https://github.com/dasmig/device-generator): a model, OS and browser that fit together at the date of the last login, the user agent and client hints they send, the `Accept-Language` of the account's locale, a screen and an IP address in the country, on the account's platform. Off by default; turning it on changes nothing else.
 
-- **Safe Test Data**. `safe` makes the email use a reserved domain (`example.com`, `.net`, `.org`) and the phone number a number from the range regulators set aside for fiction, where the country has one, so a generated user cannot reach anyone; a device then has an IP address from a documentation range.
+- **Papers, When Asked**. `request.identity` adds the person's national numbers and documents from [id-generator](https://github.com/dasmig/id-generator), built from their birth date, sex, names and address: a number that encodes a place encodes theirs, and a passport's machine-readable zone writes their name. Off by default; turning it on changes nothing else.
 
-- **Ask for What You Need**. A `user_request` can fix the country, the sex, an age range, the reference date, the password policy, the youngest sign-up age, the service start and the status, and ask for the device. What is left out is drawn.
+- **A Wallet, When Asked**. `request.finance` adds bank accounts and payment cards from [finance-generator](https://github.com/dasmig/finance-generator), with the person's name on the card. Off by default; turning it on changes nothing else.
+
+- **Safe Test Data**. `safe` makes the email use a reserved domain (`example.com`, `.net`, `.org`) and the phone number a number from the range regulators set aside for fiction, where the country has one, so a generated user cannot reach anyone; a device then has an IP address from a documentation range, and numbers, documents, accounts and cards are made by their libraries' safe methods (see Limits below).
+
+- **Ask for What You Need**. A `user_request` can fix the country, the sex, an age range, the reference date, the password policy, the youngest sign-up age, the service start and the status, and ask for the device, the papers and the wallet. What is left out is drawn.
 
 - **Deterministic Seeding**. `get_user(request, seed)` is a pure function of the request, the seed and the data, and `user::seed()` replays a previous user. Each part draws from its own stream split from the seed, so forcing one choice, such as the status, does not shift the others.
 
@@ -37,9 +50,9 @@ Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil
 
 - **Identical Everywhere**. A seed gives the same result on every compiler, standard library and CPU (GCC, Clang, MSVC, Emscripten; x86-64 and ARM64), checked by known-answer tests.
 
-- **Extensible Data**. The platform, status, locale and time-zone tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
+- **Extensible Data**. The platform, status and human-password tables are TSV files you can extend with layers (`extend()`); the libraries it composes keep theirs, and their tiers and layers are the user's.
 
-- **JSON and Replay**. `to_json()` writes each library's result as that library writes it; `signature()` records the seed and a hash of the data of all seven libraries and the account tables (and device-generator's, for a user with a device).
+- **JSON and Replay**. `to_json()` writes each library's result as that library writes it; `signature()` records the seed and a hash of the data of all seven libraries and the account tables (and device-generator's, id-generator's and finance-generator's, for a user with those parts).
 
 - **Compiled-in Data**. Define `DASMIG_USER_EMBED` to build the `lite` tier of the user tables into the program, for WebAssembly and other builds without files. The libraries it composes have their own `DASMIG_*_EMBED` switches.
 
@@ -127,6 +140,8 @@ Tested with:
 | [device-generator](https://github.com/dasmig/device-generator) | Devices, browsers, user agents and IP addresses that fit together |
 | [email-generator](https://github.com/dasmig/email-generator) | Email addresses in each country's style |
 | [entity-generator](https://github.com/dasmig/entity-generator) | ECS-based entity generation |
+| [finance-generator](https://github.com/dasmig/finance-generator) | Bank accounts and payment cards in each country's form |
+| [id-generator](https://github.com/dasmig/id-generator) | National identity numbers, passports and identity cards that fit a person and a date |
 | [interest-generator](https://github.com/dasmig/interest-generator) | Religion, hobbies and favourite media by country, age and sex |
 | [name-generator](https://github.com/dasmig/name-generator) | Culturally appropriate full names |
 | [nickname-generator](https://github.com/dasmig/nickname-generator) | Gamer-style nicknames |
@@ -135,6 +150,8 @@ Tested with:
 | [phone-generator](https://github.com/dasmig/phone-generator) | Phone numbers valid in each country's numbering plan |
 | [relationship-generator](https://github.com/dasmig/relationship-generator) | Families around a person: parents, siblings, partners and children |
 | [trait-generator](https://github.com/dasmig/trait-generator) | Personality traits with conflicts, synergies and Big Five axes |
+| [vehicle-generator](https://github.com/dasmig/vehicle-generator) | Cars and motorcycles with plates and VINs that fit their country and date |
+| [weather-generator](https://github.com/dasmig/weather-generator) | Daily weather for any place on land and any date |
 
 ## License
 
