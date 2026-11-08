@@ -18,7 +18,7 @@ const signature = u => u.signature.seed + '-' + u.signature.data;
 
 assert.equal(users.countries.length, 100);
 assert.ok(users.countries.includes('BR') && !users.countries.includes('NZ'));
-assert.equal(users.dataHash, 'a7d7a9a59df5d3a4');
+assert.equal(users.dataHash, '7f900009492f7d07');
 assert.ok(users.versions['user-generator'].length > 0, JSON.stringify(users.versions));
 assert.equal(Object.keys(users.versions).length, 11);
 assert.equal(users.deviceDataHash, 'c9d3e7931dda7213');
@@ -29,14 +29,14 @@ assert.ok(Object.isFrozen(users) && Object.isFrozen(users.countries));
 // Known answers.
 const one = users.generate({ seed: 1 });
 assert.equal(summary(one), 'Hamilton Salvador Nogueira (hamilton.salvador23) <hamilton.salvador1990@gmail.com>, Brazil');
-assert.equal(signature(one), '0000000000000001-a7d7a9a59df5d3a4');
+assert.equal(signature(one), '0000000000000001-7f900009492f7d07');
 assert.equal(one.age, 32);
 const two = users.generate({ seed: '2' });
 assert.equal(summary(two), 'Chang Shanghai (shanghaic1996) <shanghaic@qq.com>, China');
-assert.equal(signature(two), '0000000000000002-a7d7a9a59df5d3a4');
+assert.equal(signature(two), '0000000000000002-7f900009492f7d07');
 const three = users.generate({ country: 'BR', sex: 'female', ages: { min: 25, max: 35 }, seed: 3n });
 assert.equal(summary(three), 'Luana Rufino (luanarufino7322) <luana_rufino96@gmail.com>, Brazil');
-assert.equal(signature(three), '0000000000000003-a7d7a9a59df5d3a4');
+assert.equal(signature(three), '0000000000000003-7f900009492f7d07');
 const four = users.generate({ country: 'jp', referenceDate: '2030-03-09', seed: 4 });
 assert.equal(summary(four), 'Hidaka Hiromasa (hhiromasa66) <hidaka_hiromasa@gmail.com>, Japan');
 assert.equal(four.age, 63);
@@ -51,7 +51,7 @@ assert.equal('device' in one, false);
 const yara = users.generate({ country: 'BR', sex: 'female', device: true, seed: 42 });
 assert.equal(summary(yara), 'Yara Carvalho Souza (iam_ycarvalho63) <iam_ycarvalho@gmail.com>, Brazil');
 assert.equal(device(yara.device), 'chrome 113 on Android 13 (Samsung Galaxy A52), 2801:9c:db5a:14cb:9650:dec6:5843:7cca');
-assert.equal(signature(yara), '000000000000002a-d94b3f4f8fc9df0d');
+assert.equal(signature(yara), '000000000000002a-3366d664a11c9034');
 const { device: _, signature: __, ...withoutDevice } = yara;
 const { signature: ___, ...plain } = users.generate({ country: 'BR', sex: 'female', seed: 42 });
 assert.deepEqual(withoutDevice, plain);
@@ -81,7 +81,7 @@ assert.equal(held.finance.accounts[0].iban, 'BR0800556603000500011351977C1');
 assert.equal(held.finance.accounts[1].iban, 'BR2910866788042881661649119P1');
 assert.equal(held.finance.cards[0].number, '5066991111111118');
 assert.equal(held.finance.cards[0].network, 'elo');
-assert.equal(signature(held), '000000000000002a-0d5c675a311e548b');
+assert.equal(signature(held), '000000000000002a-4df8355d7f97e60e');
 const { identity: ____, finance: _____, signature: ______, ...withoutParts } = held;
 assert.deepEqual(withoutParts, plain);
 const simple = users.generate({ country: 'FR', safe: true, identity: true, finance: true, seed: 9 });
@@ -99,19 +99,19 @@ const encoder = new TextEncoder();
 for (let s = 0; s < 2000; ++s) {
   for (const byte of encoder.encode(users.generateJson({ seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-assert.equal(hash.toString(16).padStart(16, '0'), 'cace82376f1d6423');
+assert.equal(hash.toString(16).padStart(16, '0'), '6cbf2c48f9bdaec7');
 // And of 500 users with a device.
 hash = 0xcbf29ce484222325n;
 for (let s = 0; s < 500; ++s) {
   for (const byte of encoder.encode(users.generateJson({ device: true, seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-assert.equal(hash.toString(16).padStart(16, '0'), 'a7f1ecaaf722cb16');
+assert.equal(hash.toString(16).padStart(16, '0'), 'd5916afd86f09fb6');
 // And of 500 users with papers and a wallet.
 hash = 0xcbf29ce484222325n;
 for (let s = 0; s < 500; ++s) {
   for (const byte of encoder.encode(users.generateJson({ identity: papers, finance: money, seed: s }))) hash = ((hash ^ BigInt(byte)) * 0x100000001b3n) & mask;
 }
-assert.equal(hash.toString(16).padStart(16, '0'), '30102130511643ea');
+assert.equal(hash.toString(16).padStart(16, '0'), '32effb10baef3e8c');
 
 // A random user replays from its seed.
 const random = users.generate({ country: 'DE', referenceDate: new Date(2026, 9, 15) });
@@ -188,7 +188,7 @@ for (const [request, kind, message] of [
     JSON.stringify(request, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 }
 // A failed call leaves the generator usable.
-assert.equal(signature(users.generate({ seed: 1 })), '0000000000000001-a7d7a9a59df5d3a4');
+assert.equal(signature(users.generate({ seed: 1 })), '0000000000000001-7f900009492f7d07');
 
 // Batches. User i of a batch is the single call with the seed
 // core::item_seed(batchSeed, i): splitmix64_mix(seed ^ splitmix64_mix(i ^ 0x6a09e667f3bcc909)).

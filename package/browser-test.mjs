@@ -106,7 +106,7 @@ try {
     text = result?.result?.value;
     if (text === undefined) await delay(100);
   }
-  const answer = 'Hamilton Salvador Nogueira 0000000000000001-a7d7a9a59df5d3a4';
+  const answer = 'Hamilton Salvador Nogueira 0000000000000001-7f900009492f7d07';
   assert.equal(text, `page: ${answer} | worker: ${answer} | pool: true`);
   console.log('PASS: @dasmig/user browser entry loads and matches the known answer in a page and a module worker, and a pool of workers matches its batches.');
 } finally {

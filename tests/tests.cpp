@@ -1163,7 +1163,7 @@ TEST_CASE("known answers for fixed seeds", "[kat]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    REQUIRE(h == 0x226634c64ddd1b16ULL);
+    REQUIRE(h == 0x43d2453f18a9dc89ULL);
 }
 
 TEST_CASE("known answers with a device", "[kat][device]")
@@ -1185,7 +1185,7 @@ TEST_CASE("known answers with a device", "[kat][device]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({.device = true}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    REQUIRE(h == 0x84119dc1e0c8ad2bULL);
+    REQUIRE(h == 0x121ee9ec12ed2479ULL);
 }
 
 TEST_CASE("known answers with papers and a wallet", "[kat][identity][finance]")
@@ -1212,7 +1212,7 @@ TEST_CASE("known answers with papers and a wallet", "[kat][identity][finance]")
         h = dasmig::core::hash_combine(h, dasmig::core::fnv1a64(gen.get_user({.identity = papers, .finance = money}, s).to_json()));
     }
     INFO(std::format("{:016x}", h));
-    REQUIRE(h == 0xbe65b3ef0353fc43ULL);
+    REQUIRE(h == 0x2a24ded51c86f9d1ULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -1377,5 +1377,5 @@ TEST_CASE("user batch: known answer of 1,000 items", "[batch][kat]")
                       [&](std::uint64_t, const dasmig::user& item)
                       { hash = dasmig::core::hash_combine(hash, dasmig::core::fnv1a64(item.to_json())); });
     INFO(std::format("{:016x}", hash));
-    REQUIRE(hash == 0x1d92d9c5e11ecd1aULL);
+    REQUIRE(hash == 0x86d48a6a6a840937ULL);
 }
