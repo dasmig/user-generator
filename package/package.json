@@ -1,6 +1,6 @@
 {
   "name": "@dasmig/user",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Fictional user records (name, birth, address, phone, email, username, password, account, device, national numbers and documents, bank accounts and cards) from one seeded call, in WebAssembly.",
   "type": "module",
   "main": "./index.mjs",
